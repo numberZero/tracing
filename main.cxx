@@ -30,6 +30,7 @@ void load_shaders() {
 		compile_shader(GL_VERTEX_SHADER, read_file("empty.v.glsl")),
 		compile_shader(GL_GEOMETRY_SHADER, read_file("tracer.g.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("tracer.f.glsl")),
+		compile_shader(GL_FRAGMENT_SHADER, read_file("space.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("trace.glsl")),
 	});
 }

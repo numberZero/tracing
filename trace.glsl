@@ -1,9 +1,9 @@
 #version 450
 
 layout(location = 1) uniform float dt = 1.0 / 128.0;
+layout(location = 2) uniform float target_z = 4.0;
 
 float outer_radius;
-float target_z;
 
 float scale(vec3 p);
 
@@ -51,4 +51,10 @@ bool trace(inout vec3 p, inout vec3 d) {
 		p += dt * d;
 	}
 	return true;
+}
+
+bool trace2(inout vec3 p, inout vec3 d) {
+	bool ok = trace(p, d);
+	p += (target_z - p.z) / d.z * d;
+	return ok;
 }
