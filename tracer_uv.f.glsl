@@ -8,6 +8,10 @@ bool trace2(inout vec3 p, in vec3 d);
 
 void main() {
 	vec3 p = camera_position;
+	if (dir.z <= 0.0) {
+		o_uv = vec2(0.0);
+		return;
+	}
 	bool ok = trace2(p, dir);
 
 	vec2 uv = 0.25 * vec2(1.0, -1.0) * p.xy - 0.5;

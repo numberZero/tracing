@@ -64,6 +64,36 @@ void load_textures() {
 	tex::grid = load_texture("grid.png");
 }
 
+glm::mat3 make_camera_orientation_matrix(float yaw, float pitch = 0.0, float roll = 0.0) {
+	yaw = glm::radians(yaw);
+	pitch = glm::radians(pitch);
+	roll = glm::radians(roll);
+	float ys = std::sin(yaw), yc = std::cos(yaw);
+	float ps = std::sin(pitch), pc = std::cos(pitch);
+	float rs = std::sin(roll), rc = std::cos(roll);
+	glm::mat3 ym = {
+		yc, 0.0f, -ys,
+		0.0f, 1.0f, 0.0f,
+		ys, 0.0f, yc,
+	};
+	glm::mat3 pm = {
+		1.0f, 0.0f, 0.0f,
+		0.0f, pc, ps,
+		0.0f, -ps, pc,
+	};
+	glm::mat3 rm = {
+		rc, -rs, 0.0f,
+		rs, rc, 0.0f,
+		0.0f, 0.0f, 1.0f,
+	};
+	return rm * pm * ym;
+}
+
+constexpr float MOUSE_SPEED = 0.2f;
+constexpr float MOVE_SPEED = 10.0f;
+
+glm::vec3 position = {0.0, 3.0, -3.0};
+glm::vec3 rotation_ypr = {0.0, 0.0, 0.0};
 bool indirect = true;
 int scale = 4;
 float dt = 1.0f / 128.0f;
@@ -73,6 +103,31 @@ void on_scroll(GLFWwindow *window, double dx, double dy) {
 	dt *= pow(2.0, -0.25 * dy);
 	sprintf(buf, "dt: 1/%.4g", 1.0 / dt);
 	glfwSetWindowTitle(window, buf);
+}
+
+void on_cursor_pos(GLFWwindow *window, double x, double y) {
+	rotation_ypr.x = -MOUSE_SPEED * x;
+	rotation_ypr.y = -MOUSE_SPEED * y;
+	rotation_ypr.y = glm::clamp(rotation_ypr.y, -80.0f, 80.0f);
+	rotation_ypr.z = glm::clamp(rotation_ypr.z, -60.0f, 60.0f);
+	glfwSetCursorPos(window, rotation_ypr.x / -MOUSE_SPEED, rotation_ypr.y / -MOUSE_SPEED);
+}
+
+void on_key(GLFWwindow *window, int key, int scancode, int action, int mods) {
+	if (key == GLFW_KEY_ESCAPE)
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
+}
+
+void after_frame(GLFWwindow *window, float dt) {
+	auto move_matrix = glm::transpose(make_camera_orientation_matrix(rotation_ypr.x, 0.0f, 0.0f));
+	if (glfwGetKey(window, GLFW_KEY_D)) position += dt * MOVE_SPEED * move_matrix[0];
+	if (glfwGetKey(window, GLFW_KEY_A)) position -= dt * MOVE_SPEED * move_matrix[0];
+	if (glfwGetKey(window, GLFW_KEY_W)) position += dt * MOVE_SPEED * move_matrix[2];
+	if (glfwGetKey(window, GLFW_KEY_S)) position -= dt * MOVE_SPEED * move_matrix[2];
+	if (glfwGetKey(window, GLFW_KEY_R)) position += dt * MOVE_SPEED * move_matrix[1];
+	if (glfwGetKey(window, GLFW_KEY_F)) position -= dt * MOVE_SPEED * move_matrix[1];
+	if (glfwGetKey(window, GLFW_KEY_SPACE)) position += dt * MOVE_SPEED * move_matrix[1];
+	if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)) position -= dt * MOVE_SPEED * move_matrix[1];
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
@@ -91,14 +146,19 @@ int main(int argc, char *argv[])
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 	glfwWindowHint(GLFW_SAMPLES, 4);
 	GLFWwindow *window = glfwCreateWindow(800, 600, "Space Refraction", nullptr, nullptr);
-	glfwShowWindow(window);
+	glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	glfwSetScrollCallback(window, on_scroll);
+	glfwSetCursorPosCallback(window, on_cursor_pos);
+	glfwSetKeyCallback(window, on_key);
+	glfwShowWindow(window);
 	glfwMakeContextCurrent(window);
 	glDebugMessageCallback(debug, nullptr);
 	load_shaders();
 	load_textures();
 	float fps = 0.0f;
-	double t0 = glfwGetTime();
+	double t00 = glfwGetTime();
+	double t0 = t00;
 	int n = 0;
 
 	int last_width = 0, last_height = 0;
@@ -121,10 +181,14 @@ int main(int argc, char *argv[])
 			glNamedFramebufferTexture(fb, GL_COLOR_ATTACHMENT0, uvmap, 0);
 		}
 
-		glm::mat3 camera_matrix{};
-		camera_matrix[0].x = width / size;
-		camera_matrix[1].y = height / size;
-		camera_matrix[2].z = 1.0f;
+		glm::mat3 camera_matrix_1 = make_camera_orientation_matrix(rotation_ypr.x, rotation_ypr.y, rotation_ypr.z);
+
+		glm::mat3 scale_matrix{};
+		scale_matrix[0].x = width / size;
+		scale_matrix[1].y = height / size;
+		scale_matrix[2].z = 1.0f;
+
+		glm::mat3 camera_matrix = glm::inverse(camera_matrix_1) * scale_matrix;
 
 		if (indirect) {
 			glViewport(0, 0, width / scale, height / scale);
@@ -134,6 +198,7 @@ int main(int argc, char *argv[])
 			glUniformMatrix3fv(0, 1, GL_FALSE, glm::value_ptr(camera_matrix));
 			glUniform1f(1, dt);
 			glUniform1i(3, 10.0f / dt);
+			glUniform3fv(4, 1, glm::value_ptr(position));
 			glDrawArrays(GL_POINTS, 0, 1);
 
 			glEnable(GL_MULTISAMPLE);
@@ -150,20 +215,24 @@ int main(int argc, char *argv[])
 			glBindTextureUnit(0, tex::grid);
 			glUniformMatrix3fv(0, 1, GL_FALSE, glm::value_ptr(camera_matrix));
 			glUniform1f(1, dt);
+			glUniform3fv(4, 1, glm::value_ptr(position));
 			glDrawArrays(GL_POINTS, 0, 1);
 		}
 
 		glfwSwapBuffers(window);
 		n++;
 		double t1 = glfwGetTime();
-		if (t1 - t0 >= 1.0) {
-			fps = n / (t1 - t0);
-			t0 = t1;
+		if (t1 - t00 >= 1.0) {
+			fps = n / (t1 - t00);
+			t00 = t1;
 			n = 0;
 			char buf[128];
 			sprintf(buf, "FPS: %.0f", fps);
 			glfwSetWindowTitle(window, buf);
 		}
+		float dt = t1 - t0;
+		t0 = t1;
+		after_frame(window, dt);
 	}
 	glfwDestroyWindow(window);
 	return 0;
