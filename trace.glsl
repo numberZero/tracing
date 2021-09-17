@@ -2,6 +2,7 @@
 
 layout(location = 1) uniform float dt = 1.0 / 128.0;
 layout(location = 2) uniform float target_z = 4.0;
+layout(location = 3) uniform int limit = 1000;
 
 float outer_radius;
 
@@ -18,7 +19,7 @@ vec3 grad(vec3 p) {
 bool trace(inout vec3 p, inout vec3 d) {
 	d = normalize(d);
 	for (int k = 0; p.z < target_z; k++) {
-		if (k >= 1000)
+		if (k >= limit)
 			return false;
 
 		float r = outer_radius;
@@ -53,7 +54,7 @@ bool trace(inout vec3 p, inout vec3 d) {
 	return true;
 }
 
-bool trace2(inout vec3 p, inout vec3 d) {
+bool trace2(inout vec3 p, in vec3 d) {
 	bool ok = trace(p, d);
 	p += (target_z - p.z) / d.z * d;
 	return ok;

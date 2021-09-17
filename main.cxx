@@ -65,7 +65,7 @@ void load_textures() {
 }
 
 bool indirect = true;
-int scale = 2;
+int scale = 4;
 float dt = 1.0f / 128.0f;
 
 void on_scroll(GLFWwindow *window, double dx, double dy) {
@@ -121,13 +121,19 @@ int main(int argc, char *argv[])
 			glNamedFramebufferTexture(fb, GL_COLOR_ATTACHMENT0, uvmap, 0);
 		}
 
+		glm::mat3 camera_matrix{};
+		camera_matrix[0].x = width / size;
+		camera_matrix[1].y = height / size;
+		camera_matrix[2].z = 1.0f;
+
 		if (indirect) {
 			glViewport(0, 0, width / scale, height / scale);
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb);
 			glClear(GL_COLOR_BUFFER_BIT);
 			glUseProgram(prog::uv_tracer);
-			glUniform2f(0, width / size, height / size);
+			glUniformMatrix3fv(0, 1, GL_FALSE, glm::value_ptr(camera_matrix));
 			glUniform1f(1, dt);
+			glUniform1i(3, 10.0f / dt);
 			glDrawArrays(GL_POINTS, 0, 1);
 
 			glEnable(GL_MULTISAMPLE);
@@ -142,7 +148,7 @@ int main(int argc, char *argv[])
 			glDisable(GL_MULTISAMPLE);
 			glUseProgram(prog::tracer);
 			glBindTextureUnit(0, tex::grid);
-			glUniform2f(0, width / size, height / size);
+			glUniformMatrix3fv(0, 1, GL_FALSE, glm::value_ptr(camera_matrix));
 			glUniform1f(1, dt);
 			glDrawArrays(GL_POINTS, 0, 1);
 		}

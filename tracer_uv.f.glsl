@@ -1,14 +1,14 @@
 #version 430
 
-in vec2 pos;
+layout(location = 4) uniform vec3 camera_position = vec3(0.0, 0.0, -1.5);
+in vec3 dir;
 out vec2 o_uv;
 
-bool trace2(inout vec3 p, inout vec3 d);
+bool trace2(inout vec3 p, in vec3 d);
 
 void main() {
-	vec3 p = vec3(0.0, 0.0, -1.5);
-	vec3 d = vec3(pos, 1.0);
-	bool ok = trace2(p, d);
+	vec3 p = camera_position;
+	bool ok = trace2(p, dir);
 
 	vec2 uv = 0.25 * vec2(1.0, -1.0) * p.xy - 0.5;
 	if (!ok)
