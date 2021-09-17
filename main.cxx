@@ -114,57 +114,7 @@ int main(int argc, char *argv[])
 		glUniform2f(0, width / size, height / size);
 		glUniform1f(1, dt);
 		glDrawArrays(GL_POINTS, 0, 1);
-		glUseProgram(0);
-/*
-		glLoadIdentity();
-		glOrtho(-width / size, width / size, -height / size, height / size, -1.0f, 1.0f);
-		glColor4f(0.0f, 0.5f, 1.0f, 0.5f);
-		for (float x = -1.0; x <= 1.0; x += 1.0f / 16.0f) {
-			for (float y = -1.0; y <= 1.0; y += 1.0f / 16.0f) {
-				float s = 1.0f / 128.0f;
-				glBegin(GL_LINE_LOOP);
-				glVertex2f(x - s, y);
-				glVertex2f(x, y - s * c({x, y}));
-				glVertex2f(x + s, y);
-				glVertex2f(x, y + s * c({x, y}));
-				glEnd();
-			}
-		}
 
-// 		for (int angle = -60; angle <= 60; angle += 5) {
-		for (int i = 0; i < 160; i++) {
-			constexpr float t = 3.0;
-// 			const float dt = 0.001;
-			const int N = t / dt;
-// 			const float phi = glm::radians<float>(angle);
-// 			const float a = cos(phi);
-// 			const float s = sin(phi);
-			const float u = (i + 0.5f) / 80.0f - 1.0f;
-			glm::vec2 p0 = {-1.0f, 0.0f};
-
-			float dx = 1.0f;
-			float dy = u;
-			glm::vec2 p = p0;
-			glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
-			glBegin(GL_LINE_STRIP);
-			glVertex2fv(glm::value_ptr(p));
-			glVertex2fv(glm::value_ptr(p + 3.0f * glm::vec2{dx, dy}));
-			glEnd();
-
-			glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
-			glBegin(GL_LINE_STRIP);
-			glVertex2fv(glm::value_ptr(p));
-			while (p.x < 1.0f && fabs(p.y) < 1.0f) {
-				float ddx = 0.5f * c_x(p) * dy * dy;
-				float ddy = -c_x(p) / c(p) * dx * dy + 0.5f * c_y(p) / c(p) * dy * dy;
-				dx += dt * ddx;
-				dy += dt * ddy;
-				p += dt * glm::vec2{dx, dy};
-				glVertex2fv(glm::value_ptr(p));
-			}
-			glEnd();
-		}
-*/
 		glfwSwapBuffers(window);
 	}
 	glfwDestroyWindow(window);
