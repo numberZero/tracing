@@ -23,9 +23,9 @@ void main() {
 	vec3 d = vec3(pos, 1.0);
 	bool ok = trace(p, d);
 	p += (target_z - p.z) / d.z * d;
-	vec2 uv = mod(p.xy / 0.125, 2.0);
-	bvec2 ab = lessThan(uv, vec2(1.0));
-	uv = mod(uv, 1.0);
-	bool c = ab.x == ab.y;
-	o_color = vec4(uv.x, uv.y, !ok, 1.0);
+
+	vec2 uv = 0.25 * vec2(1.0, -1.0) * p.xy - 0.5;
+	o_color = texture(colors, uv);
+	if (!ok)
+		o_color.b = clamp(o_color.b + 0.5, 0.0, 1.0);
 }

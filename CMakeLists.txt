@@ -17,6 +17,7 @@ target_link_libraries(space_refraction PUBLIC
 	glfw
 	GL
 	fmt
+	png
 	)
 
 target_compile_options(space_refraction PUBLIC

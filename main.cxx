@@ -7,14 +7,17 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <png++/png.hpp>
 #include "shader.hxx"
 #include "io.hxx"
 
 namespace prog {
+	unsigned quad;
+	unsigned tracer;
+}
 
-unsigned quad;
-unsigned tracer;
-
+namespace tex {
+	unsigned grid;
 }
 
 void load_shaders() {
@@ -25,10 +28,26 @@ void load_shaders() {
 	});
 	prog::tracer = link_program({
 		compile_shader(GL_VERTEX_SHADER, read_file("empty.v.glsl")),
-		compile_shader(GL_GEOMETRY_SHADER, read_file("tracer_quarter.g.glsl")),
+		compile_shader(GL_GEOMETRY_SHADER, read_file("tracer.g.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("tracer.f.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("trace.glsl")),
 	});
+}
+
+static unsigned load_texture(std::string const &filename, GLenum format = GL_RGBA8) {
+	unsigned texture;
+	png::image<png::rgba_pixel, png::solid_pixel_buffer<png::rgba_pixel>> image(filename);
+	printf("Got texture %dx%d from %s\n", image.get_width(), image.get_height(), filename.c_str());
+	glCreateTextures(GL_TEXTURE_2D, 1, &texture);
+	auto &&data = image.get_pixbuf().get_bytes();
+	glTextureStorage2D(texture, 1, format, image.get_width(), image.get_height());
+	glTextureSubImage2D(texture, 0, 0, 0, image.get_width(), image.get_height(), GL_RGBA, GL_UNSIGNED_BYTE, data.data());
+	printf("Got pixel %d, %d, %d, %d\n", data[0], data[1], data[2], data[3]);
+	return texture;
+}
+
+void load_textures() {
+	tex::grid = load_texture("grid.png");
 }
 
 float c(glm::vec2 p) {
@@ -77,6 +96,7 @@ int main(int argc, char *argv[])
 	glfwMakeContextCurrent(window);
 	glDebugMessageCallback(debug, nullptr);
 	load_shaders();
+	load_textures();
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -90,6 +110,7 @@ int main(int argc, char *argv[])
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		glUseProgram(prog::tracer);
+		glBindTextureUnit(0, tex::grid);
 		glUniform2f(0, width / size, height / size);
 		glUniform1f(1, dt);
 		glDrawArrays(GL_POINTS, 0, 1);
