@@ -14,6 +14,8 @@
 namespace prog {
 	unsigned quad;
 	unsigned tracer;
+	unsigned uv_quad;
+	unsigned uv_tracer;
 }
 
 namespace tex {
@@ -26,10 +28,22 @@ void load_shaders() {
 		compile_shader(GL_GEOMETRY_SHADER, read_file("screen_quad.g.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("screen_quad.f.glsl")),
 	});
+	prog::uv_quad = link_program({
+		compile_shader(GL_VERTEX_SHADER, read_file("empty.v.glsl")),
+		compile_shader(GL_GEOMETRY_SHADER, read_file("tracer_quarter.g.glsl")),
+		compile_shader(GL_FRAGMENT_SHADER, read_file("screen_quad_uv.f.glsl")),
+	});
 	prog::tracer = link_program({
 		compile_shader(GL_VERTEX_SHADER, read_file("empty.v.glsl")),
 		compile_shader(GL_GEOMETRY_SHADER, read_file("tracer.g.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("tracer.f.glsl")),
+		compile_shader(GL_FRAGMENT_SHADER, read_file("space.glsl")),
+		compile_shader(GL_FRAGMENT_SHADER, read_file("trace.glsl")),
+	});
+	prog::uv_tracer = link_program({
+		compile_shader(GL_VERTEX_SHADER, read_file("empty.v.glsl")),
+		compile_shader(GL_GEOMETRY_SHADER, read_file("tracer.g.glsl")),
+		compile_shader(GL_FRAGMENT_SHADER, read_file("tracer_uv.f.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("space.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("trace.glsl")),
 	});
@@ -43,7 +57,6 @@ static unsigned load_texture(std::string const &filename, GLenum format = GL_RGB
 	auto &&data = image.get_pixbuf().get_bytes();
 	glTextureStorage2D(texture, 1, format, image.get_width(), image.get_height());
 	glTextureSubImage2D(texture, 0, 0, 0, image.get_width(), image.get_height(), GL_RGBA, GL_UNSIGNED_BYTE, data.data());
-	printf("Got pixel %d, %d, %d, %d\n", data[0], data[1], data[2], data[3]);
 	return texture;
 }
 
@@ -51,23 +64,8 @@ void load_textures() {
 	tex::grid = load_texture("grid.png");
 }
 
-float c(glm::vec2 p) {
-	return 1.0f / (1.0f + 1.0f * exp(-10.0f * p.x * p.x));
-}
-
+bool indirect = true;
 float dt = 1.0f / 128.0f;
-
-float c_x(glm::vec2 p) {
-	auto h = 0.25f * dt;
-// 	static constexpr float h = 1.0f / (1 << 12);
-	return (c({p.x + h, p.y}) - c({p.x - h, p.y})) / (2.0f * h);
-}
-
-float c_y(glm::vec2 p) {
-	auto h = 0.25f * dt;
-// 	static constexpr float h = 1.0f / (1 << 12);
-	return (c({p.x, p.y + h}) - c({p.x, p.y - h})) / (2.0f * h);
-}
 
 void on_scroll(GLFWwindow *window, double dx, double dy) {
 	char buf[128];
@@ -98,26 +96,52 @@ int main(int argc, char *argv[])
 	glDebugMessageCallback(debug, nullptr);
 	load_shaders();
 	load_textures();
-	glEnable(GL_LINE_SMOOTH);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	float fps = 0.0f;
 	double t0 = glfwGetTime();
 	int n = 0;
+
+	int last_width = 0, last_height = 0;
+	unsigned uvmap = 0;
+	unsigned fb;
+	glCreateFramebuffers(1, &fb);
+
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 		int width, height;
 		glfwGetWindowSize(window, &width, &height);
 		glViewport(0, 0, width, height);
 		float size = fmin(width, height);
+		if (width != last_width || height != last_height) {
+			last_width = width;
+			last_height = height;
+			glDeleteTextures(1, &uvmap);
+			glCreateTextures(GL_TEXTURE_2D, 1, &uvmap);
+			glTextureStorage2D(uvmap, 1, GL_RG16, width, height);
+			glNamedFramebufferTexture(fb, GL_COLOR_ATTACHMENT0, uvmap, 0);
+		}
 
-		glClear(GL_COLOR_BUFFER_BIT);
+		if (indirect) {
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb);
+			glClear(GL_COLOR_BUFFER_BIT);
+			glUseProgram(prog::uv_tracer);
+			glUniform2f(0, width / size, height / size);
+			glUniform1f(1, dt);
+			glDrawArrays(GL_POINTS, 0, 1);
 
-		glUseProgram(prog::tracer);
-		glBindTextureUnit(0, tex::grid);
-		glUniform2f(0, width / size, height / size);
-		glUniform1f(1, dt);
-		glDrawArrays(GL_POINTS, 0, 1);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+			glUseProgram(prog::uv_quad);
+			glBindTextureUnit(0, tex::grid);
+			glBindTextureUnit(1, uvmap);
+			glUniform2f(0, 1.0f, 1.0f);
+			glDrawArrays(GL_POINTS, 0, 1);
+		} else {
+			glUseProgram(prog::tracer);
+			glBindTextureUnit(0, tex::grid);
+			glUniform2f(0, width / size, height / size);
+			glUniform1f(1, dt);
+			glDrawArrays(GL_POINTS, 0, 1);
+		}
 
 		glfwSwapBuffers(window);
 		n++;
