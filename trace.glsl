@@ -2,6 +2,7 @@
 
 layout(location = 1) uniform float dt = 1.0 / 128.0;
 
+float outer_radius;
 float target_z;
 
 float scale(vec3 p);
@@ -18,7 +19,26 @@ bool trace(inout vec3 p, inout vec3 d) {
 	d = normalize(d);
 	for (int k = 0; p.z < target_z; k++) {
 		if (k >= 1000)
-		return false;
+			return false;
+
+		float r = outer_radius;
+		if (length(p.yz) > r) {
+			float a = dot(d.yz, d.yz);
+			float b = 2.0 * dot(p.yz, d.yz);
+			float c = dot(p.yz, p.yz) - r*r;
+			float D = b * b - 4.0 * a * c;
+			if (D <= 0.0)
+				return true;
+			float t1 = (- b - sqrt(D)) / (2.0 * a);
+			float t2 = (- b + sqrt(D)) / (2.0 * a);
+			if (t2 < 0.0)
+				return true;
+			if (t1 > 2 * dt) {
+				p += (t1 - dt) * d;
+				continue;
+			}
+		}
+
 		float c = scale(p);
 		if (c != 1.0) {
 			vec3 dc = grad(p);
