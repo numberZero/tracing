@@ -30,7 +30,7 @@ void load_shaders() {
 	});
 	prog::uv_quad = link_program({
 		compile_shader(GL_VERTEX_SHADER, read_file("empty.v.glsl")),
-		compile_shader(GL_GEOMETRY_SHADER, read_file("tracer_quarter.g.glsl")),
+		compile_shader(GL_GEOMETRY_SHADER, read_file("screen_quad.g.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("screen_quad_uv.f.glsl")),
 	});
 	prog::tracer = link_program({
@@ -65,6 +65,7 @@ void load_textures() {
 }
 
 bool indirect = true;
+int scale = 2;
 float dt = 1.0f / 128.0f;
 
 void on_scroll(GLFWwindow *window, double dx, double dy) {
@@ -116,11 +117,12 @@ int main(int argc, char *argv[])
 			last_height = height;
 			glDeleteTextures(1, &uvmap);
 			glCreateTextures(GL_TEXTURE_2D, 1, &uvmap);
-			glTextureStorage2D(uvmap, 1, GL_RG16, width, height);
+			glTextureStorage2D(uvmap, 1, GL_RG32F, width / scale, height / scale);
 			glNamedFramebufferTexture(fb, GL_COLOR_ATTACHMENT0, uvmap, 0);
 		}
 
 		if (indirect) {
+			glViewport(0, 0, width / scale, height / scale);
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb);
 			glClear(GL_COLOR_BUFFER_BIT);
 			glUseProgram(prog::uv_tracer);
@@ -128,14 +130,16 @@ int main(int argc, char *argv[])
 			glUniform1f(1, dt);
 			glDrawArrays(GL_POINTS, 0, 1);
 
+			glEnable(GL_MULTISAMPLE);
+			glViewport(0, 0, width, height);
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 			glClear(GL_COLOR_BUFFER_BIT);
 			glUseProgram(prog::uv_quad);
 			glBindTextureUnit(0, tex::grid);
 			glBindTextureUnit(1, uvmap);
-			glUniform2f(0, 1.0f, 1.0f);
 			glDrawArrays(GL_POINTS, 0, 1);
 		} else {
+			glDisable(GL_MULTISAMPLE);
 			glUseProgram(prog::tracer);
 			glBindTextureUnit(0, tex::grid);
 			glUniform2f(0, width / size, height / size);

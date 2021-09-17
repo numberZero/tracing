@@ -3,7 +3,7 @@
 layout(binding = 0) uniform sampler2D colors;
 layout(binding = 1) uniform sampler2D uvs;
 
-in vec2 pos;
+in sample vec2 pos;
 out vec4 o_color;
 
 void main() {

@@ -13,5 +13,5 @@ void main() {
 	vec2 uv = 0.25 * vec2(1.0, -1.0) * p.xy - 0.5;
 	if (!ok)
 		uv += vec2(0.5);
-	o_uv = mod(uv, 1.0);
+	o_uv = uv;
 }
