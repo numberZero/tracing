@@ -100,6 +100,9 @@ int main(int argc, char *argv[])
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	float fps = 0.0f;
+	double t0 = glfwGetTime();
+	int n = 0;
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 		int width, height;
@@ -116,6 +119,16 @@ int main(int argc, char *argv[])
 		glDrawArrays(GL_POINTS, 0, 1);
 
 		glfwSwapBuffers(window);
+		n++;
+		double t1 = glfwGetTime();
+		if (t1 - t0 >= 1.0) {
+			fps = n / (t1 - t0);
+			t0 = t1;
+			n = 0;
+			char buf[128];
+			sprintf(buf, "FPS: %.0f", fps);
+			glfwSetWindowTitle(window, buf);
+		}
 	}
 	glfwDestroyWindow(window);
 	return 0;
