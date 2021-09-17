@@ -18,10 +18,9 @@ vec3 grad(vec3 p) {
 
 bool trace(inout vec3 p, inout vec3 d) {
 	d = normalize(d);
-	for (int k = 0; p.z < target_z; k++) {
-		if (k >= limit)
-			return false;
-
+	for (int k = 0; k < limit; k++) {
+		if (p.z >= target_z)
+			return true;
 		float r = outer_radius;
 		if (length(p.yz) > r) {
 			float a = dot(d.yz, d.yz);
@@ -51,11 +50,16 @@ bool trace(inout vec3 p, inout vec3 d) {
 		}
 		p += dt * d;
 	}
-	return true;
+	return false;
 }
 
 bool trace2(inout vec3 p, in vec3 d) {
 	bool ok = trace(p, d);
 	p += (target_z - p.z) / d.z * d;
 	return ok;
+}
+
+vec3 trace3(vec3 p, vec3 d) {
+	trace(p, d);
+	return d;
 }

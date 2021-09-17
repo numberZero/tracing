@@ -197,6 +197,7 @@ int main(int argc, char *argv[])
 			glUseProgram(prog::uv_tracer);
 			glUniformMatrix3fv(0, 1, GL_FALSE, glm::value_ptr(camera_matrix));
 			glUniform1f(1, dt);
+			glUniform1f(2, 1000.0f);
 			glUniform1i(3, 10.0f / dt);
 			glUniform3fv(4, 1, glm::value_ptr(position));
 			glDrawArrays(GL_POINTS, 0, 1);
