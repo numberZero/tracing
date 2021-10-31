@@ -22,3 +22,9 @@ add_executable(space_refraction
 	shader.cxx
 	io.cxx
 	)
+
+add_executable(refraction2
+	refr2.cxx
+	shader.cxx
+	io.cxx
+	)
