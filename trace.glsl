@@ -3,8 +3,7 @@
 layout(location = 1) uniform float dt = 1.0 / 128.0;
 layout(location = 2) uniform float target_z = 4.0;
 layout(location = 3) uniform int limit = 1000;
-
-float outer_radius;
+layout(location = 5) uniform vec4 params;
 
 float scale(vec3 p);
 
@@ -17,27 +16,28 @@ vec3 grad(vec3 p) {
 }
 
 bool trace(inout vec3 p, inout vec3 d) {
+	const float outer_radius = params.x;
 	d = normalize(d);
 	for (int k = 0; k < limit; k++) {
-		if (p.z >= target_z)
+		if (p.x >= target_z)
 			return true;
 		float r = outer_radius;
-		if (length(p.yz) > r) {
-			float a = dot(d.yz, d.yz);
-			float b = 2.0 * dot(p.yz, d.yz);
-			float c = dot(p.yz, p.yz) - r*r;
-			float D = b * b - 4.0 * a * c;
-			if (D <= 0.0)
-				return true;
-			float t1 = (- b - sqrt(D)) / (2.0 * a);
-			float t2 = (- b + sqrt(D)) / (2.0 * a);
-			if (t2 < 0.0)
-				return true;
-			if (t1 > 2 * dt) {
-				p += (t1 - dt) * d;
-				continue;
-			}
-		}
+// 		if (length(p.yz) > r) {
+// 			float a = dot(d.yz, d.yz);
+// 			float b = 2.0 * dot(p.yz, d.yz);
+// 			float c = dot(p.yz, p.yz) - r*r;
+// 			float D = b * b - 4.0 * a * c;
+// 			if (D <= 0.0)
+// 				return true;
+// 			float t1 = (- b - sqrt(D)) / (2.0 * a);
+// 			float t2 = (- b + sqrt(D)) / (2.0 * a);
+// 			if (t2 < 0.0)
+// 				return true;
+// 			if (t1 > 2 * dt) {
+// 				p += (t1 - dt) * d;
+// 				continue;
+// 			}
+// 		}
 
 		float c = scale(p);
 		if (c != 1.0) {
@@ -55,7 +55,7 @@ bool trace(inout vec3 p, inout vec3 d) {
 
 bool trace2(inout vec3 p, in vec3 d) {
 	bool ok = trace(p, d);
-	p += (target_z - p.z) / d.z * d;
+	p += (target_z - p.x) / d.x * d;
 	return ok;
 }
 
