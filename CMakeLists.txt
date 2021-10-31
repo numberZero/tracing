@@ -2,25 +2,23 @@ cmake_minimum_required(VERSION 3.12)
 
 project(space_refraction)
 
-add_executable(space_refraction
-	main.cxx
-	#shaders.cxx
-	shader.cxx
-	io.cxx
-	)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-target_compile_definitions(space_refraction PUBLIC
+add_compile_definitions(
 	GL_GLEXT_PROTOTYPES
 	)
 
-target_link_libraries(space_refraction PUBLIC
+link_libraries(
 	glfw
 	GL
 	fmt
 	png
 	)
 
-target_compile_options(space_refraction PUBLIC
-	#-fno-exceptions
-	#-fno-rtti
+add_executable(space_refraction
+	main.cxx
+	#shaders.cxx
+	shader.cxx
+	io.cxx
 	)
