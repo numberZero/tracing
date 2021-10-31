@@ -16,9 +16,8 @@ link_libraries(
 	png
 	)
 
-add_executable(space_refraction
-	main.cxx
-	#shaders.cxx
+add_executable(refraction2
+	refr2.cxx
 	shader.cxx
 	io.cxx
 	)
