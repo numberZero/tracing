@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 
 project(space_refraction)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 add_compile_definitions(
@@ -23,8 +23,6 @@ add_executable(space_refraction
 	io.cxx
 	)
 
-add_executable(refraction2
-	refr2.cxx
-	shader.cxx
-	io.cxx
+add_executable(prog2
+	prog2.cxx
 	)
