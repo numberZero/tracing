@@ -40,15 +40,43 @@ struct tens {
 using tens2 = tens<2>;
 using tens3 = tens<3>;
 
+template <int N, typename T>
+struct tensor_traits;
+
 template <int N>
-static tens<N> dmetric(vec<N> pos, float eps = 1e-3f) {
-	tens<N> result;
+struct tensor_traits<N, float> {
+	using type = float;
+	using next = vec<N>;
+};
+
+template <int N>
+struct tensor_traits<N, vec<N>> {
+	using type = vec<N>;
+	using next = mat<N>;
+	using prev = float;
+};
+
+template <int N>
+struct tensor_traits<N, mat<N>> {
+	using type = mat<N>;
+	using next = tens<N>;
+	using prev = vec<N>;
+};
+
+template <int N, typename T>
+static auto part_deriv(T f(vec<N>), vec<N> pos, float eps = 1e-3f) {
+	typename tensor_traits<N, T>::next result;
 	for (int k = 0; k < N; k++) {
 		vec<N> delta = {};
 		delta[k] = eps;
-		result[k] = (metric(pos + delta) - metric(pos - delta)) / (2.0f * eps);
+		result[k] = (f(pos + delta) - f(pos - delta)) / (2.0f * eps);
 	}
 	return result;
+}
+
+template <int N>
+static tens<N> dmetric(vec<N> pos, float eps = 1e-3f) {
+	return part_deriv(metric, pos, eps);
 }
 
 template <int N>
