@@ -9,13 +9,6 @@ add_compile_definitions(
 	GL_GLEXT_PROTOTYPES
 	)
 
-link_libraries(
-	glfw
-	GL
-	fmt
-	png
-	)
-
 add_executable(space_refraction
 	main.cxx
 	#shaders.cxx
@@ -23,6 +16,17 @@ add_executable(space_refraction
 	io.cxx
 	)
 
+target_link_libraries(space_refraction
+	glfw
+	GL
+	fmt
+	png
+	)
+
 add_executable(prog2
 	prog2.cxx
+	)
+
+add_executable(prog3
+	prog3.cxx
 	)
