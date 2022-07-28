@@ -17,6 +17,26 @@ using vec = glm::vec<N, float>;
 template <int N>
 using mat = glm::mat<N, N, float>;
 
+template <int N>
+mat<N> diagonal(vec<N> v) {
+	mat<N> ret{0.0f};
+	for (int k = 0; k < N; k++)
+		ret[k][k] = v[k];
+	return ret;
+}
+
+auto diagonal(float x, float y) {
+	return diagonal(vec<2> {x, y});
+}
+
+auto diagonal(float x, float y, float z) {
+	return diagonal(vec<3>{x, y, z});
+}
+
+auto diagonal(float x, float y, float z, float w) {
+	return diagonal(vec<4>{x, y, z, w});
+}
+
 inline static float sqr(float x) {
 	return x * x;
 }
@@ -52,20 +72,17 @@ static const float coil_m = 0.1f;
 
 static mat2 halfmetric(vec2 pos) {
 	float r = glm::length(pos);
+	vec2 dir = glm::normalize(pos);
+
 	float s = box(r, {coil_r - coil_w, coil_r + coil_w}, coil_m);
 	float t = glm::mix(1.0f, coil_r/r/coil_scale, s);
-	vec2 dir = glm::normalize(pos);
-	return mat2{
-		(sqr(dir.x) + sqr(dir.y * t) + t) / (1 + t), dir.x * dir.y * (1 - t),
-		dir.x * dir.y * (1 - t), (sqr(dir.x * t) + sqr(dir.y) + t) / (1 + t),
+
+	mat2 diag = diagonal(1.0f, t);
+	mat2 ortho = {
+		dir.x, -dir.y,
+		dir.y, dir.x,
 	};
-// 	return mat2{
-// 		1.0f, 0.0f,
-// 		0.0f, glm::mix(1.0f, coil_r/r/coil_scale, s),
-// 	} * mat2{
-// 		dir.x, -dir.y,
-// 		dir.y, dir.x,
-// 	};
+	return glm::transpose(ortho) * diag * ortho;
 }
 
 static mat2 metric(vec2 pos) { // с нижними индексами!
