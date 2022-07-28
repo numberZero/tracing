@@ -7,6 +7,8 @@
 #include <glm/glm.hpp>
 #include <png++/png.hpp>
 
+#define COIL 1
+
 using glm::vec2, glm::mat2;
 using glm::dot;
 using std::sqrt;
@@ -51,20 +53,9 @@ inline static float box(float val, vec2 range, float pad) {
 	float lin = std::min(slope1, slope2);
 	return smoothstep(glm::clamp(lin, 0.0f, 1.0f));
 }
-/*
-static const float box_scale = 3.0f;
-static const vec2 box_a = {-0.3f, -3.0f};
-static const vec2 box_b = {0.3f, 3.0f};
-static const vec2 box_m = {0.1f, 0.5f};
 
-static mat2 halfmetric(vec2 pos) {
-	float s = box(pos.x, {box_a.x, box_b.x}, box_m.x) * box(pos.y, {box_a.y, box_b.y}, box_m.y);
-	return {
-		{1.0f, 0.0f},
-		{0.0f, pow(box_scale, -s)},
-	};
-}
-*/
+#if COIL
+
 static const float coil_scale = 3.0f;
 static const float coil_r = 3.0f;
 static const float coil_w = 0.5f;
@@ -84,6 +75,23 @@ static mat2 halfmetric(vec2 pos) {
 	};
 	return glm::transpose(ortho) * diag * ortho;
 }
+
+#else
+
+static const float box_scale = 3.0f;
+static const vec2 box_a = {-0.3f, -3.0f};
+static const vec2 box_b = {0.3f, 3.0f};
+static const vec2 box_m = {0.1f, 0.5f};
+
+static mat2 halfmetric(vec2 pos) {
+	float s = box(pos.x, {box_a.x, box_b.x}, box_m.x) * box(pos.y, {box_a.y, box_b.y}, box_m.y);
+	return {
+		{1.0f, 0.0f},
+		{0.0f, pow(box_scale, -s)},
+	};
+}
+
+#endif
 
 static mat2 metric(vec2 pos) { // с нижними индексами!
 	mat2 h = halfmetric(pos);
@@ -244,6 +252,7 @@ int main() {
 		auto line = trace(vec2{-5.0f, 0.0f}, vec2{1.0f, y},20.0f);
 		draw_path(svg, "ray", {line}, false, 10);
 	}
+#if COIL
 	for (int j = -64; j <= 64; j++) {
 		float x = j / 64.0f;
 		printf("%d: %.3f\n", j, x);
@@ -254,8 +263,16 @@ int main() {
 	fprintf(svg, "<circle class=\"inner\" r=\"%.3f\" />", coil_r + coil_w);
 	fprintf(svg, "<circle class=\"outer\" r=\"%.3f\" />", coil_r - coil_w - coil_m);
 	fprintf(svg, "<circle class=\"outer\" r=\"%.3f\" />", coil_r + coil_w + coil_m);
-// 	draw_box(svg, "inner", box_a, box_b);
-// 	draw_box(svg, "outer", box_a - box_m, box_b + box_m);
+#else
+	for (int j = -64; j <= 64; j++) {
+		float x = j / 64.0f;
+		printf("%d: %.3f\n", j, x);
+		auto line = trace(vec2{0.5f * box_a.x + 0.5f * box_b.x, 0.7f * box_a.y + 0.3f * box_b.y}, vec2{x, 1.0f}, 10.0f);
+		draw_path(svg, "ray2", {line}, false, 10);
+	}
+	draw_box(svg, "inner", box_a, box_b);
+	draw_box(svg, "outer", box_a - box_m, box_b + box_m);
+#endif
 	fprintf(svg, "</svg>");
 	fclose(svg);
 }
