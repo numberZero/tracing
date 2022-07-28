@@ -108,6 +108,17 @@ double randd() {
 	return erand48(randstate);
 }
 
+vec2 rand_disc() {
+	for (;;) {
+		vec2 ret = {randd(), randd()};
+		ret = 2.0f * ret - 1.0f;
+		float len = length(ret);
+		if (len >= 1.0f)
+			continue;
+		return ret;
+	}
+}
+
 vec3 rand_spherical() {
 	for (;;) {
 		vec3 ret = {randd(), randd(), randd()};
@@ -181,42 +192,52 @@ public:
 	vec3 color;
 };
 
-class Custom: public Material {
-public:
-	void hit(Light &light, vec3 &dir, vec3 normal) const noexcept override {
-		light *= color;
-		light += emission;
-		dir = reflect(dir, normal) + softness * rand_spherical();
-		if (dot(dir, normal) <= 0.0f)
-			light *= {0,0,0};
-	}
-
-	Custom(vec3 color, float softness = 0.5f, vec3 emission = {}) : color(color), emission(emission), softness(softness) {}
-
-	vec3 color;
-	vec3 emission;
-	float softness;
-};
-
 class Surface {
 public:
 	Shape const &shape;
 	Material const &material;
 };
 
-Surface const surfaces[] = {
-	{Sphere{{-3.0,  0.0, -12}, 2}, Metallic({0.5, 0.5, 0.6}, 0.1)},
-	{Sphere{{-1.0, -1.5, -16}, 2}, Metallic({0.7, 0.1, 0.1}, 0.5)},
-	{Sphere{{ 2.5, -0.5, -14}, 2}, Diffuse({0.3, 0.2, 0.7})},
-	{Sphere{{ 7.0,  5.0, -18}, 2}, Specular({0.7, 0.7, 0.7})},
-	{Sphere{{ 7.0,  5.0, -6}, 2}, Shiny({3.7, 1.7, 1.7})},
-	{Plane{{0.0, -4.0, 0.0}, {0.0, 1.0, 0.0}}, Diffuse({0.12, 0.40, 0.02})},
-// 	{Sphere{{-3.0,  0.0, -16}, 2}, Custom{{0.3, 0.5, 0.2}}},
-// 	{Sphere{{-1.0, -1.5, -12}, 2}, Custom{{0.7, 0.1, 0.1}}},
-// 	{Sphere{{ 1.5, -0.5, -18}, 2}, Custom{{0.3, 0.2, 0.7}}},
-// 	{Sphere{{ 7.0,  5.0, -18}, 2}, Custom{{1.7, 1.7, 1.7}}},
+std::vector<Surface> surfaces = {
+// Surface const surfaces[] = {
+	{*new Sphere{{-3.0, 4.0,  3.0}, 2}, *new Metallic({0.5, 0.5, 0.6}, 0.1)},
+	{*new Sphere{{-1.0, 2.5, -1.0}, 2}, *new Metallic({0.7, 0.1, 0.1}, 0.5)},
+	{*new Sphere{{ 2.5, 3.5,  1.0}, 2}, *new Diffuse({0.3, 0.2, 0.7})},
+	{*new Sphere{{ 7.0, 9.0, -3.0}, 2}, *new Specular({0.7, 0.7, 0.7})},
+	{*new Sphere{{ 7.0, 9.0,  9.0}, 2}, *new Shiny({3.7, 1.7, 1.7})},
+	{*new Plane{{0.0, -4.0, 0.0}, {0.0, 1.0, 0.0}}, *new Diffuse({0.12, 0.40, 0.02})},
 };
 
+void prepare() {
+	randstate[0] = 0x1234;
+	randstate[1] = 0x5678;
+	randstate[2] = 0x9ABC;
+	for (int k = 0; k < 300; k++) {
+		float u = randd();
+		float v = randd();
+		float radius = 0.1f + 0.2f * u + 0.6f * pow(v, 10);
+		vec2 d = rand_disc();
+		vec2 pos = 50.f * d * dot(d, d);
+		Shape *shape = new Sphere{{pos.x, radius, pos.y}, radius};
+
+		float softness = randd();
+		float hue = 2 * M_PI * randd();
+		vec3 pure = .5f + .5f * vec3{cos(hue), cos(hue + 2/3. * M_PI), cos(hue + 4/3. * M_PI)};
+		float sat = randd();
+		vec3 color = mix(vec3(1), pure, sat);
+		float darkness = .8f * randd();
+		float brightness = 1.f - darkness;
+		Material *material;
+		if (softness > .5f)
+			material = new Diffuse(brightness * color);
+		else
+			material = new Metallic(brightness * color, softness);
+
+		surfaces.push_back({*shape, *material});
+	}
+}
+
+static vec3 const camera_pos = {0.0, 4.0, 15.0};
 static vec3 const sun_dir = normalize(vec3{100.0f, 200.0f, 100.0f});
 static float const sun_size = 0.002f;
 static vec3 const sun_color = {20.0f, 18.0f, 12.0f};
@@ -289,7 +310,7 @@ ivec3 makePixel(ivec2 pos) {
 	int n = 0;
 	for (int k = 0; k < rays; k++) {
 		vec3 dir = normalize(vec3{pos.x + randd() - width/2.f, height/2.f - (pos.y + randd()), -depth});
-		Ray ray{{}, dir};
+		Ray ray{camera_pos, dir};
 		Light light;
 		for (int k = 0; k < max_reflections; k++) {
 			auto hit = trace(ray);
