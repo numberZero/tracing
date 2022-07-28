@@ -237,7 +237,6 @@ void prepare() {
 	}
 }
 
-static vec3 const camera_pos = {0.0, 4.0, 15.0};
 static vec3 const sun_dir = normalize(vec3{100.0f, 200.0f, 100.0f});
 static float const sun_size = 0.002f;
 static vec3 const sun_color = {20.0f, 18.0f, 12.0f};
@@ -302,15 +301,22 @@ static constexpr float brightness = 2.0f;
 static constexpr int width = 800;
 static constexpr int height = 600;
 static constexpr int depth = height;
-static constexpr int rays = 16;
+static constexpr int rays = 256;
 static constexpr int max_reflections = 16;
+
+static vec3 const camera_pos = {0.0, 4.0, -15.0};
+static float const aperture = 0.3f;
+static float const lens_rad = aperture / 2.f;
+static float const focal_distance = 15.0f;
 
 ivec3 makePixel(ivec2 pos) {
 	vec3 color = {};
 	int n = 0;
 	for (int k = 0; k < rays; k++) {
-		vec3 dir = normalize(vec3{pos.x + randd() - width/2.f, height/2.f - (pos.y + randd()), -depth});
-		Ray ray{camera_pos, dir};
+		vec2 focal = (focal_distance / depth) * vec2{pos.x + randd() - width/2.f, height/2.f - (pos.y + randd())};
+		vec2 lens = lens_rad * rand_disc();
+		vec3 dir = normalize(vec3{focal, focal_distance} - vec3{lens, 0.f});
+		Ray ray{camera_pos + vec3{lens, 0.f}, dir};
 		Light light;
 		for (int k = 0; k < max_reflections; k++) {
 			auto hit = trace(ray);
