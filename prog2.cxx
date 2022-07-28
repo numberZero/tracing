@@ -31,7 +31,7 @@ inline static float box(float val, vec2 range, float pad) {
 	float lin = std::min(slope1, slope2);
 	return smoothstep(glm::clamp(lin, 0.0f, 1.0f));
 }
-
+/*
 static const float box_scale = 3.0f;
 static const vec2 box_a = {-0.3f, -3.0f};
 static const vec2 box_b = {0.3f, 3.0f};
@@ -44,10 +44,33 @@ static mat2 halfmetric(vec2 pos) {
 		{0.0f, pow(box_scale, -s)},
 	};
 }
+*/
+static const float coil_scale = 3.0f;
+static const float coil_r = 3.0f;
+static const float coil_w = 0.5f;
+static const float coil_m = 0.1f;
+
+static mat2 halfmetric(vec2 pos) {
+	float r = glm::length(pos);
+	float s = box(r, {coil_r - coil_w, coil_r + coil_w}, coil_m);
+	float t = glm::mix(1.0f, coil_r/r/coil_scale, s);
+	vec2 dir = glm::normalize(pos);
+	return mat2{
+		(sqr(dir.x) + sqr(dir.y * t) + t) / (1 + t), dir.x * dir.y * (1 - t),
+		dir.x * dir.y * (1 - t), (sqr(dir.x * t) + sqr(dir.y) + t) / (1 + t),
+	};
+// 	return mat2{
+// 		1.0f, 0.0f,
+// 		0.0f, glm::mix(1.0f, coil_r/r/coil_scale, s),
+// 	} * mat2{
+// 		dir.x, -dir.y,
+// 		dir.y, dir.x,
+// 	};
+}
 
 static mat2 metric(vec2 pos) { // с нижними индексами!
 	mat2 h = halfmetric(pos);
-	return h * h;
+	return glm::transpose(h) * h;
 }
 
 template <int N>
@@ -201,17 +224,21 @@ int main() {
 	for (int j = -64; j <= 64; j++) {
 		float y = j / 64.0f;
 		printf("%d: %.3f\n", j, y);
-		auto line = trace(vec2{-4.0f, 0.0f}, vec2{1.0f, y}, 10.0f);
+		auto line = trace(vec2{-5.0f, 0.0f}, vec2{1.0f, y},20.0f);
 		draw_path(svg, "ray", {line}, false, 10);
 	}
 	for (int j = -64; j <= 64; j++) {
 		float x = j / 64.0f;
 		printf("%d: %.3f\n", j, x);
-		auto line = trace(vec2{0.0f, 0.0f}, vec2{x, 1.0f}, 10.0f);
+		auto line = trace(vec2{coil_r, 0.0f}, vec2{x, 1.0f}, 6.28f * coil_r / coil_scale);
 		draw_path(svg, "ray2", {line}, false, 10);
 	}
-	draw_box(svg, "inner", box_a, box_b);
-	draw_box(svg, "outer", box_a - box_m, box_b + box_m);
+	fprintf(svg, "<circle class=\"inner\" r=\"%.3f\" />", coil_r - coil_w);
+	fprintf(svg, "<circle class=\"inner\" r=\"%.3f\" />", coil_r + coil_w);
+	fprintf(svg, "<circle class=\"outer\" r=\"%.3f\" />", coil_r - coil_w - coil_m);
+	fprintf(svg, "<circle class=\"outer\" r=\"%.3f\" />", coil_r + coil_w + coil_m);
+// 	draw_box(svg, "inner", box_a, box_b);
+// 	draw_box(svg, "outer", box_a - box_m, box_b + box_m);
 	fprintf(svg, "</svg>");
 	fclose(svg);
 }
