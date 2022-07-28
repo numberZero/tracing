@@ -5,6 +5,8 @@ project(space_refraction)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+find_package(Threads REQUIRED)
+
 add_compile_definitions(
 	GL_GLEXT_PROTOTYPES
 	)
@@ -30,3 +32,11 @@ add_executable(prog2
 add_executable(prog3
 	prog3.cxx
 	)
+
+target_link_libraries(prog3
+	Threads::Threads
+)
+
+target_compile_definitions(prog3 PRIVATE
+	THREADS=1
+)

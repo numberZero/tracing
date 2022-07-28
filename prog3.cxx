@@ -1,8 +1,9 @@
 #include <cstdio>
 #include <optional>
-#include <string>
-#include <span>
-#include <type_traits>
+#if THREADS
+#include <thread>
+#include <vector>
+#endif
 #include <glm/glm.hpp>
 
 using namespace std;
@@ -97,9 +98,19 @@ struct Light {
 	}
 };
 
+static thread_local uint16_t randstate[3];
+
+int32_t rand31() {
+	return nrand48(randstate);
+}
+
+double randd() {
+	return erand48(randstate);
+}
+
 vec3 rand_spherical() {
 	for (;;) {
-		vec3 ret = {drand48(), drand48(), drand48()};
+		vec3 ret = {randd(), randd(), randd()};
 		ret = 2.0f * ret - 1.0f;
 		float len = length(ret);
 		if (len >= 1.0f)
@@ -277,7 +288,7 @@ ivec3 makePixel(ivec2 pos) {
 	vec3 color = {};
 	int n = 0;
 	for (int k = 0; k < rays; k++) {
-		vec3 dir = normalize(vec3{pos.x + drand48() - width/2.f, height/2.f - (pos.y + drand48()), -depth});
+		vec3 dir = normalize(vec3{pos.x + randd() - width/2.f, height/2.f - (pos.y + randd()), -depth});
 		Ray ray{{}, dir};
 		Light light;
 		for (int k = 0; k < max_reflections; k++) {
@@ -295,14 +306,81 @@ ivec3 makePixel(ivec2 pos) {
 	return to_sRGB(compress_color(brightness / n * color));
 }
 
-int main() {
+static uint8_t image[height][width][3];
+
+void render_line(int j) {
+	for (int i = 0; i < width; i++) {
+		ivec3 pixel = makePixel({i, j});
+		for (int k = 0; k < 3; k++)
+			image[j][i][k] = pixel[k];
+	}
+}
+
+void render_band(int j1, int j2) {
+	randstate[0] = 0x1234 ^ j1;
+	randstate[1] = 0x5678 ^ j2;
+	randstate[2] = 0x9ABC;
+	rand31();
+	rand31();
+	printf("Me renders %d-%d only\n", j1, j2);
+	for (int j = j1; j < j2; j++)
+		render_line(j);
+	printf("Me rendered %d-%d\n", j1, j2);
+}
+
+void render_lines(int start, int step) {
+	randstate[0] = 0x1234 ^ start;
+	randstate[1] = 0x5678 ^ step;
+	randstate[2] = 0x9ABC;
+	rand31();
+	rand31();
+	printf("Me renders every %d from %d only\n", step, start);
+	for (int j = start; j < height; j += step)
+		render_line(j);
+	printf("Me rendered every %d from %d only\n", step, start);
+}
+
+vector<thread> threads_bands(int n) {
+	vector<thread> threads;
+	vector<int> splits;
+	for (int k = 0; k <= n; k++)
+		splits.push_back(k * height / n);
+	for (int k = 0; k < n; k++)
+		threads.emplace_back(render_band, splits[k], splits[k + 1]);
+	return threads;
+}
+
+vector<thread> threads_interlaced(int n) {
+	vector<thread> threads;
+	for (int k = 0; k < n; k++)
+		threads.emplace_back(render_lines, k, n);
+	return threads;
+}
+
+#if THREADS
+void render() {
+	auto threads = threads_interlaced(thread::hardware_concurrency());
+	for (thread &th: threads)
+		th.join();
+}
+#else
+void render() {
+	render_band(0, height);
+}
+#endif
+
+void save() {
 	FILE *ppm = fopen("out.ppm", "wb");
 	fprintf(ppm, "P6\n%d %d\n255\n", width, height);
-	for (int j = 0; j < height; j++) {
-		for (int i = 0; i < width; i++) {
-			ivec3 pixel = makePixel({i, j});
-			fprintf(ppm, "%c%c%c", pixel.x, pixel.y, pixel.z);
-		}
-	}
+	fwrite(image, sizeof(image), 1, ppm);
 	fclose(ppm);
+}
+
+int main() {
+	prepare();
+	printf("Prepared %zu surfaces\n", surfaces.size());
+	render();
+	printf("Rendered %d lines\n", height);
+	save();
+	printf("Saved\n");
 }
