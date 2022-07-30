@@ -281,6 +281,13 @@ int main() {
 	draw_box(svg, "inner", box_a, box_b);
 	draw_box(svg, "outer", box_a - box_m, box_b + box_m);
 #endif
+	for (int j = -64; j <= 64; j++)
+	for (int i = -64; i <= 64; i++) {
+		vec2 p = vec2(i, j) / 8.f;
+		decomp2 h = halfmetric(p);
+		mat2 s = transpose(h.ortho) * diagonal(1.f / h.diag) / 64.f;
+		draw_path(svg, "mark", {{p + s[0], p + s[1], p - s[0], p - s[1]}}, true);
+	}
 	fprintf(svg, "</svg>");
 	fclose(svg);
 }
