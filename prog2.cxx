@@ -54,6 +54,12 @@ inline static float box(float val, vec2 range, float pad) {
 	return smoothstep(glm::clamp(lin, 0.0f, 1.0f));
 }
 
+// Decomposed (O^−1 D O) symmetrical matrix
+struct decomp2 {
+	mat2 ortho; // must be orthogonal
+	vec2 diag; // eigenvalues
+};
+
 #if COIL
 
 static const float coil_scale = 3.0f;
@@ -61,19 +67,20 @@ static const float coil_r = 3.0f;
 static const float coil_w = 0.5f;
 static const float coil_m = 0.1f;
 
-static mat2 halfmetric(vec2 pos) {
+static decomp2 halfmetric(vec2 pos) {
 	float r = glm::length(pos);
 	vec2 dir = glm::normalize(pos);
 
 	float s = box(r, {coil_r - coil_w, coil_r + coil_w}, coil_m);
 	float t = glm::mix(1.0f, coil_r/r/coil_scale, s);
 
-	mat2 diag = diagonal(1.0f, t);
-	mat2 ortho = {
-		dir.x, -dir.y,
-		dir.y, dir.x,
+	return {
+		.ortho = {
+			dir.x, -dir.y,
+			dir.y, dir.x,
+		},
+		.diag = {1.0f, t},
 	};
-	return glm::transpose(ortho) * diag * ortho;
 }
 
 #else
@@ -83,19 +90,19 @@ static const vec2 box_a = {-0.3f, -3.0f};
 static const vec2 box_b = {0.3f, 3.0f};
 static const vec2 box_m = {0.1f, 0.5f};
 
-static mat2 halfmetric(vec2 pos) {
+static decomp2 halfmetric(vec2 pos) {
 	float s = box(pos.x, {box_a.x, box_b.x}, box_m.x) * box(pos.y, {box_a.y, box_b.y}, box_m.y);
 	return {
-		{1.0f, 0.0f},
-		{0.0f, pow(box_scale, -s)},
+		.ortho = mat2(1.f),
+		.diag = {1.f, pow(box_scale, -s)},
 	};
 }
 
 #endif
 
 static mat2 metric(vec2 pos) { // с нижними индексами!
-	mat2 h = halfmetric(pos);
-	return glm::transpose(h) * h;
+	decomp2 h = halfmetric(pos);
+	return glm::transpose(h.ortho) * diagonal(h.diag * h.diag) * h.ortho;
 }
 
 template <int N>
@@ -205,8 +212,9 @@ static std::vector<vec<N>> trace(vec<N> base, vec<N> dir, float distance, float 
 	int steps = distance / dt;
 	std::vector<vec<N>> result;
 	result.reserve(steps + 1);
+	auto h = halfmetric(base);
 	auto p = base;
-	auto v = glm::inverse(halfmetric(base)) * dir;
+	auto v = h.ortho * (1.f / h.diag) * transpose(h.ortho) * dir;
 	v /=  length(p, v);
 	result.push_back(p);
 	for (int k = 0; k < steps; k++) {
