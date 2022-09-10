@@ -197,6 +197,8 @@ public:
 	Material const &material;
 };
 
+static constexpr float basement_radius = 1000.0f;
+
 std::vector<Surface> surfaces = {
 // Surface const surfaces[] = {
 	{*new Sphere{{-3.0, 4.0,  3.0}, 2}, *new Metallic({0.5, 0.5, 0.6}, 0.1)},
@@ -204,7 +206,7 @@ std::vector<Surface> surfaces = {
 	{*new Sphere{{ 2.5, 3.5,  1.0}, 2}, *new Diffuse({0.3, 0.2, 0.7})},
 	{*new Sphere{{ 7.0, 9.0, -3.0}, 2}, *new Specular({0.7, 0.7, 0.7})},
 	{*new Sphere{{ 7.0, 9.0,  9.0}, 2}, *new Shiny({3.7, 1.7, 1.7})},
-	{*new Plane{{0.0, -4.0, 0.0}, {0.0, 1.0, 0.0}}, *new Diffuse({0.12, 0.40, 0.02})},
+	{*new Sphere{{0.0, -basement_radius, 0.0}, basement_radius}, *new Diffuse({0.65, 0.65, 0.65})},
 };
 
 void prepare() {
@@ -215,7 +217,8 @@ void prepare() {
 		float radius = 0.1f + 0.2f * u + 0.6f * pow(v, 10);
 		vec2 d = rand_disc();
 		vec2 pos = 50.f * d * dot(d, d);
-		Shape *shape = new Sphere{{pos.x, radius, pos.y}, radius};
+		vec3 pos3 = (basement_radius + radius) * normalize(vec3{pos.x, basement_radius, pos.y}) - vec3{0, basement_radius, 0};
+		Shape *shape = new Sphere{pos3, radius};
 
 		float softness = randd();
 		float hue = 2 * M_PI * randd();
