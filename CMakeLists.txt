@@ -40,3 +40,7 @@ target_link_libraries(prog3
 target_compile_definitions(prog3 PRIVATE
 	THREADS=1
 )
+
+target_include_directories(prog3 PRIVATE
+	pcg-cpp/include/
+)

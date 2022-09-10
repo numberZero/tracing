@@ -5,6 +5,8 @@
 #include <vector>
 #endif
 #include <glm/glm.hpp>
+#include <random>
+#include <pcg_random.hpp>
 
 using namespace std;
 using namespace glm;
@@ -98,14 +100,11 @@ struct Light {
 	}
 };
 
-static thread_local uint16_t randstate[3];
-
-int32_t rand31() {
-	return nrand48(randstate);
-}
+static thread_local pcg32 rgen;
 
 double randd() {
-	return erand48(randstate);
+	static thread_local std::uniform_real_distribution<> dist;
+	return dist(rgen);
 }
 
 vec2 rand_disc() {
@@ -209,9 +208,7 @@ std::vector<Surface> surfaces = {
 };
 
 void prepare() {
-	randstate[0] = 0x1234;
-	randstate[1] = 0x5678;
-	randstate[2] = 0x9ABC;
+	rgen.seed(0x12345678);
 	for (int k = 0; k < 300; k++) {
 		float u = randd();
 		float v = randd();
@@ -344,11 +341,7 @@ void render_line(int j) {
 }
 
 void render_band(int j1, int j2) {
-	randstate[0] = 0x1234 ^ j1;
-	randstate[1] = 0x5678 ^ j2;
-	randstate[2] = 0x9ABC;
-	rand31();
-	rand31();
+	rgen.seed(0x12345678, (j1 << 16) ^ j2);
 	printf("Me renders %d-%d only\n", j1, j2);
 	for (int j = j1; j < j2; j++)
 		render_line(j);
@@ -356,11 +349,7 @@ void render_band(int j1, int j2) {
 }
 
 void render_lines(int start, int step) {
-	randstate[0] = 0x1234 ^ start;
-	randstate[1] = 0x5678 ^ step;
-	randstate[2] = 0x9ABC;
-	rand31();
-	rand31();
+	rgen.seed(0x12345678, (start << 16) ^ step);
 	printf("Me renders every %d from %d only\n", step, start);
 	for (int j = start; j < height; j += step)
 		render_line(j);
