@@ -82,6 +82,40 @@ private:
 	}
 };
 
+class Quadric: public Shape {
+public:
+	Quadric(mat4 m) : m(0.5f * (m + glm::transpose(m))) {}
+
+	optional<Hit> hit(Ray const &ray) const noexcept override {
+		vec4 va{ray.dir, 0.0f};
+		vec4 vb{ray.pos, 1.0f};
+		float a = glm::dot(va, m * va);
+		float b = glm::dot(va, m * vb) / a;
+		float c = glm::dot(vb, m * vb) / a;
+
+		float D = b*b - c;
+		if (D < 0.0f)
+			return nullopt;
+		float d = std::sqrt(D);
+		float t0 = -b-d;
+		float t1 = -b+d;
+		if (t0 > eps) return make(ray, t0);
+		if (t1 > eps) return make(ray, t1);
+		return nullopt;
+	}
+
+	mat4 m;
+
+private:
+	Hit make(Ray const &ray, float t) const noexcept {
+		Hit hit;
+		hit.dist = t;
+		hit.pos = ray.pos + t * ray.dir;
+		hit.normal = glm::normalize(vec3(m * vec4(hit.pos, 1.0f)));
+		return hit;
+	}
+};
+
 class Triangle: public Shape {
 public:
 	Triangle(vec3 a, vec3 b, vec3 c)
@@ -233,12 +267,23 @@ static constexpr int additional_spheres = 30;
 #endif
 
 std::vector<Surface> surfaces = {
-// Surface const surfaces[] = {
 	{*new Sphere{{-3.0, 4.0,  3.0}, 2}, *new Metallic({0.5, 0.5, 0.6}, 0.1)},
 	{*new Sphere{{-1.0, 2.5, -1.0}, 2}, *new Metallic({0.7, 0.1, 0.1}, 0.5)},
 	{*new Sphere{{ 2.5, 3.5,  1.0}, 2}, *new Diffuse({0.3, 0.2, 0.7})},
 	{*new Sphere{{ 7.0, 5.0,  9.0}, 2}, *new Shiny({3.7, 1.7, 1.7})},
 	{*new Triangle{{6.0, 7.0, -3.0}, {2.0, 7.0, -3.0}, {4.0, 9.0, -2.0}}, *new Diffuse({0.9, 0.8, 0.2})},
+	{*new Quadric({
+		1.0, 0.0, 0.0, 40.0,
+		0.0, -0.2, 0.0, 0.0,
+		0.0, 0.0, 1.0, 30.0,
+		0.0, 0.0, 0.0, 620.0,
+	}), *new Metallic({0.5, 0.5, 0.8}, 0.3)},
+	{*new Quadric({
+		1.0, 0.0, 0.0, -18.0,
+		0.0, 0.0, 0.0, 0.0,
+		0.0, 0.0, 1.0, 0.0,
+		0.0, 0.0, 0.0, 80.0,
+	}), *new Metallic({0.5, 0.8, 0.6}, 0.3)},
 	{*new Sphere{{0.0, -basement_radius, 0.0}, basement_radius}, *new Diffuse({0.65, 0.65, 0.65})},
 };
 
