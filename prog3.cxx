@@ -1,8 +1,8 @@
 #include <cstdio>
 #include <optional>
+#include <vector>
 #if THREADS
 #include <thread>
-#include <vector>
 #endif
 #include <glm/glm.hpp>
 #include <random>
@@ -301,8 +301,8 @@ static constexpr int depth = height;
 static constexpr int rays = 256;
 static constexpr int max_reflections = 16;
 
-static vec3 const camera_pos = {0.0, 4.0, -15.0};
-static float const aperture = 0.3f;
+static vec3 const camera_pos = {0.0, 4.0, 15.0};
+static float const aperture = 0.1f;
 static float const lens_rad = aperture / 2.f;
 static float const focal_distance = 15.0f;
 
@@ -312,7 +312,7 @@ ivec3 makePixel(ivec2 pos) {
 	for (int k = 0; k < rays; k++) {
 		vec2 focal = (focal_distance / depth) * vec2{pos.x + randd() - width/2.f, height/2.f - (pos.y + randd())};
 		vec2 lens = lens_rad * rand_disc();
-		vec3 dir = normalize(vec3{focal, focal_distance} - vec3{lens, 0.f});
+		vec3 dir = normalize(vec3{focal, -focal_distance} - vec3{lens, 0.f});
 		Ray ray{camera_pos + vec3{lens, 0.f}, dir};
 		Light light;
 		for (int k = 0; k < max_reflections; k++) {
