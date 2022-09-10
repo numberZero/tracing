@@ -110,6 +110,34 @@ private:
 	}
 };
 
+class Conicoid: public Quadric {
+public:
+	Conicoid(vec3 origin, vec3 axis, float radius, float expansion = 0.0f): Quadric(place({
+			expansion, 0.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, -radius*radius,
+		}, origin, axis)) {}
+
+	static mat4 place(mat4 m, vec3 origin, vec3 axis = {1, 0, 0}) {
+		using namespace glm;
+		vec3 up;
+		vec3 u = normalize(axis);
+		if (std::abs(u.x) <= 0.5f)
+			up = {1, 0, 0};
+		else if (std::abs(u.y) <= 0.5f)
+			up = {0, 1, 0};
+		else
+			up = {0, 0, 1};
+		vec3 v = normalize(cross(u, up));
+		vec3 w = cross(u, v);
+		mat3 rot = transpose(mat3{u, v, w});
+		mat4 t = rot;
+		t[3] = vec4(-rot * origin, 1);
+		return transpose(t) * m * t;
+	}
+};
+
 class Triangle: public Shape {
 public:
 	Triangle(vec3 a, vec3 b, vec3 c)

@@ -26,19 +26,8 @@ std::vector<Surface> surfaces = {
 	{*new Sphere{{-1.0, 2.5, -1.0}, 2}, *new Metallic({0.7, 0.1, 0.1}, 0.5)},
 	{*new Sphere{{ 2.5, 3.5,  1.0}, 2}, *new Diffuse({0.3, 0.2, 0.7})},
 	{*new Sphere{{ 7.0, 5.0,  12.0}, 2}, *new Shiny({3.7, 1.7, 1.7})},
-	{*new Quadric({
-		1.0, 0.0, 0.0, 40.0,
-		0.0, -0.2, 0.0, 0.0,
-		0.0, 0.0, 1.0, 30.0,
-		0.0, 0.0, 0.0, 620.0,
-	}), *new Metallic({0.5, 0.5, 0.8}, 0.3)},
-	{*new Quadric({
-		1.0, 0.0, 0.0, -18.0,
-		0.0, 0.0, 0.0, 0.0,
-		0.0, 0.0, 1.0, 0.0,
-		0.0, 0.0, 0.0, 80.0,
-	}), *new Metallic({0.5, 0.8, 0.6}, 0.3)},
-// 	{*new Triangle{{6.0, 7.0, -3.0}, {2.0, 7.0, -3.0}, {4.0, 9.0, -2.0}}, *new Diffuse({0.9, 0.8, 0.2})},
+	{*new Conicoid({-30.0, 3.0, -30.0},  {-30.0, basement_radius+3.0, -30.0}, 4.0, -0.3), *new Metallic({0.5, 0.5, 0.8}, 0.3)},
+	{*new Conicoid({9.0, 3.0, 0.0}, {3, basement_radius+1, 0}, 1.5, 0.0), *new Metallic({0.5, 0.8, 0.6}, 0.3)},
 	{*new Sphere{{0.0, -basement_radius, 0.0}, basement_radius}, *new Diffuse({0.65, 0.65, 0.65})},
 };
 
