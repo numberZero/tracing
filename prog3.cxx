@@ -36,6 +36,7 @@ public:
 	optional<Hit> hit(Ray const &ray) const noexcept override {
 		vec3 L = center - ray.pos;
 		float tca = dot(L, ray.dir);
+		if (tca < 0) return nullopt;
 		float d2 = dot(L, L) - tca*tca;
 		if (d2 > radius * radius) return nullopt;
 		float thc = std::sqrt(radius * radius - d2);
