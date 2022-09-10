@@ -24,7 +24,7 @@ static constexpr int additional_spheres = 300;
 std::vector<Surface> surfaces = {
 	{*new Sphere{{-3.0, 4.0,  3.0}, 2}, *new Metallic({0.5, 0.5, 0.6}, 0.1)},
 	{*new Sphere{{-1.0, 2.5, -1.0}, 2}, *new Metallic({0.7, 0.1, 0.1}, 0.5)},
-	{*new Sphere{{ 2.5, 3.5,  1.0}, 2}, *new Diffuse({0.3, 0.2, 0.7})},
+	{*new Sphere{{ 2.5, 3.5,  1.0}, 2}, *new Metallic({0.8, 0.6, 0.3}, 0.3)},
 	{*new Sphere{{ 7.0, 5.0,  12.0}, 2}, *new Shiny({3.7, 1.7, 1.7})},
 	{*new Conicoid({-30.0, 3.0, -30.0},  {-30.0, basement_radius+3.0, -30.0}, 4.0, -0.3), *new Metallic({0.5, 0.5, 0.8}, 0.3)},
 	{*new Conicoid({9.0, 3.0, 0.0}, {3, basement_radius+1, 0}, 1.5, 0.0), *new Metallic({0.5, 0.8, 0.6}, 0.3)},
