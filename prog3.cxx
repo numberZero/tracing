@@ -260,18 +260,13 @@ public:
 };
 
 static constexpr float basement_radius = 1000.0f;
-#if BEST
 static constexpr int additional_spheres = 300;
-#else
-static constexpr int additional_spheres = 30;
-#endif
 
 std::vector<Surface> surfaces = {
 	{*new Sphere{{-3.0, 4.0,  3.0}, 2}, *new Metallic({0.5, 0.5, 0.6}, 0.1)},
 	{*new Sphere{{-1.0, 2.5, -1.0}, 2}, *new Metallic({0.7, 0.1, 0.1}, 0.5)},
 	{*new Sphere{{ 2.5, 3.5,  1.0}, 2}, *new Diffuse({0.3, 0.2, 0.7})},
-	{*new Sphere{{ 7.0, 5.0,  9.0}, 2}, *new Shiny({3.7, 1.7, 1.7})},
-	{*new Triangle{{6.0, 7.0, -3.0}, {2.0, 7.0, -3.0}, {4.0, 9.0, -2.0}}, *new Diffuse({0.9, 0.8, 0.2})},
+	{*new Sphere{{ 7.0, 5.0,  12.0}, 2}, *new Shiny({3.7, 1.7, 1.7})},
 	{*new Quadric({
 		1.0, 0.0, 0.0, 40.0,
 		0.0, -0.2, 0.0, 0.0,
@@ -284,17 +279,18 @@ std::vector<Surface> surfaces = {
 		0.0, 0.0, 1.0, 0.0,
 		0.0, 0.0, 0.0, 80.0,
 	}), *new Metallic({0.5, 0.8, 0.6}, 0.3)},
+// 	{*new Triangle{{6.0, 7.0, -3.0}, {2.0, 7.0, -3.0}, {4.0, 9.0, -2.0}}, *new Diffuse({0.9, 0.8, 0.2})},
 	{*new Sphere{{0.0, -basement_radius, 0.0}, basement_radius}, *new Diffuse({0.65, 0.65, 0.65})},
 };
 
 void prepare() {
 	rgen.seed(0x12345678);
+	std::normal_distribution<float> ndist{0.0f, 10.0f};
 	for (int k = 0; k < additional_spheres; k++) {
 		float u = randd();
 		float v = randd();
 		float radius = 0.1f + 0.2f * u + 0.6f * pow(v, 10);
-		vec2 d = rand_disc();
-		vec2 pos = 50.f * d * dot(d, d);
+		vec2 pos = {ndist(rgen), ndist(rgen)};
 		vec3 pos3 = (basement_radius + radius) * normalize(vec3{pos.x, basement_radius, pos.y}) - vec3{0, basement_radius, 0};
 		Shape *shape = new Sphere{pos3, radius};
 
@@ -386,9 +382,9 @@ static constexpr int rays = 256;
 #else
 #define makePixel makePixelFast
 static constexpr int width = 800;
-static constexpr int height = 600;
+static constexpr int height = 450;
 static constexpr int depth = height;
-static constexpr int rays = 256;
+static constexpr int rays = 16;
 #endif
 static constexpr int max_reflections = 16;
 
