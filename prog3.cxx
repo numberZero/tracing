@@ -82,6 +82,33 @@ private:
 	}
 };
 
+class Triangle: public Shape {
+public:
+	Triangle(vec3 a, vec3 b, vec3 c)
+		: hm(inverse(mat4{{a, 1}, {b, 1}, {c, 1}, {0, 0, 0, -1}}))
+		, n(normalize(cross(c-a, b-a)))
+	{}
+
+	optional<Hit> hit(Ray const &ray) const noexcept override {
+		float t = (1 - (hm * ray.pos).w) / (hm * ray.dir).w;
+		if (t <= 0)
+			return nullopt;
+		Hit hit;
+		hit.dist = t;
+		hit.pos = ray.pos + t * ray.dir;
+		hit.normal = n;
+		vec4 h = hm * hit.pos;
+		if (h.w < 0)
+			h = -h;
+		if (!all(greaterThanEqual(vec3(h), vec3(0))))
+			return nullopt;
+		return {hit};
+	}
+
+	mat3x4 hm;
+	vec3 n;
+};
+
 struct Light {
 	vec3 light = {0,0,0};
 	vec3 filter = {1,1,1};
@@ -211,6 +238,7 @@ std::vector<Surface> surfaces = {
 	{*new Sphere{{-1.0, 2.5, -1.0}, 2}, *new Metallic({0.7, 0.1, 0.1}, 0.5)},
 	{*new Sphere{{ 2.5, 3.5,  1.0}, 2}, *new Diffuse({0.3, 0.2, 0.7})},
 	{*new Sphere{{ 7.0, 5.0,  9.0}, 2}, *new Shiny({3.7, 1.7, 1.7})},
+	{*new Triangle{{6.0, 7.0, -3.0}, {2.0, 7.0, -3.0}, {4.0, 9.0, -2.0}}, *new Diffuse({0.9, 0.8, 0.2})},
 	{*new Sphere{{0.0, -basement_radius, 0.0}, basement_radius}, *new Diffuse({0.65, 0.65, 0.65})},
 };
 
