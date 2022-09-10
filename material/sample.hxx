@@ -1,70 +1,9 @@
 #pragma once
-#include <optional>
-#include <random>
 #include <glm/glm.hpp>
-#include <pcg_random.hpp>
+#include "base.hxx"
+#include "rand.hxx"
 
 using glm::vec2, glm::vec3;
-
-struct Light {
-	vec3 light = {0,0,0};
-	vec3 filter = {1,1,1};
-
-	operator vec3() const noexcept {
-		return light;
-	}
-
-	Light &operator*= (vec3 f) noexcept {
-		filter *= f;
-		return *this;
-	}
-
-	Light &operator+= (vec3 l) noexcept {
-		light += filter * l;
-		return *this;
-	}
-};
-
-class Material {
-public:
-	virtual void hit(Light &light, vec3 &dir, vec3 normal) const noexcept = 0;
-
-	vec3 color;
-	vec3 emission;
-	float softness;
-};
-
-static thread_local pcg32 rgen;
-
-inline static double randd() {
-	static thread_local std::uniform_real_distribution<> dist;
-	return dist(rgen);
-}
-
-inline static vec2 rand_disc() {
-	for (;;) {
-		vec2 ret = {randd(), randd()};
-		ret = 2.0f * ret - 1.0f;
-		float len = length(ret);
-		if (len >= 1.0f)
-			continue;
-		return ret;
-	}
-}
-
-inline static vec3 rand_spherical() {
-	static constexpr float eps = 1e-3;
-	for (;;) {
-		vec3 ret = {randd(), randd(), randd()};
-		ret = 2.0f * ret - 1.0f;
-		float len = length(ret);
-		if (len >= 1.0f)
-			continue;
-		if (len < eps)
-			continue;
-		return ret / len;
-	}
-}
 
 class Metallic: public Material {
 public:

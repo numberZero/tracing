@@ -31,6 +31,9 @@ add_executable(prog2
 
 add_executable(prog3
 	prog3.cxx
+	render.cxx
+	scene.cxx
+	trace.cxx
 	)
 
 target_link_libraries(prog3
@@ -42,5 +45,6 @@ target_compile_definitions(prog3 PRIVATE
 )
 
 target_include_directories(prog3 PRIVATE
+	.
 	pcg-cpp/include/
 )
