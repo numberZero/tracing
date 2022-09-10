@@ -295,10 +295,19 @@ vec3 compress_color(vec3 color) {
 }
 
 static constexpr float brightness = 2.0f;
+#if BEST
+#define makePixel makePixelFine
+static constexpr int width = 1920;
+static constexpr int height = 1080;
+static constexpr int depth = height;
+static constexpr int rays = 256;
+#else
+#define makePixel makePixelFast
 static constexpr int width = 800;
 static constexpr int height = 600;
 static constexpr int depth = height;
 static constexpr int rays = 256;
+#endif
 static constexpr int max_reflections = 16;
 
 static vec3 const camera_pos = {0.0, 4.0, 15.0};
@@ -306,7 +315,7 @@ static float const aperture = 0.1f;
 static float const lens_rad = aperture / 2.f;
 static float const focal_distance = 15.0f;
 
-ivec3 makePixel(ivec2 pos) {
+ivec3 makePixelFine(ivec2 pos) {
 	vec3 color = {};
 	int n = 0;
 	for (int k = 0; k < rays; k++) {
@@ -328,6 +337,45 @@ ivec3 makePixel(ivec2 pos) {
 		}
 	}
 	return to_sRGB(compress_color(brightness / n * color));
+}
+
+vec3 renderPixelFast(vec3 dir) {
+	Ray ray1{camera_pos, dir};
+
+	auto hit = trace(ray1);
+	if (!hit.surface)
+		return background(dir);
+
+	vec3 color = {};
+	int n = 0;
+	for (int k = 0; k < rays; k++) {
+		Ray ray{hit.pos, dir};
+		Light light;
+		hit.surface->material.hit(light, ray.dir, hit.normal);
+
+		for (int k = 1; k < max_reflections; k++) {
+			auto hit = trace(ray);
+			if (!hit.surface) {
+				light += background(ray.dir);
+				color += vec3(light);
+				n++;
+				break;
+			}
+			hit.surface->material.hit(light, ray.dir, hit.normal);
+			ray.pos = hit.pos;
+			if (all(lessThan(light.filter, vec3{1e-2f}))) {
+				color += vec3(light);
+				n++;
+				break;
+			}
+		}
+	}
+	return color / float(n);
+}
+
+ivec3 makePixelFast(ivec2 pos) {
+	vec3 dir = {pos.x - width/2.f + .5f, height/2.f - pos.y - .5f, -depth};
+	return to_sRGB(compress_color(brightness * renderPixelFast(normalize(dir))));
 }
 
 static uint8_t image[height][width][3];
@@ -356,6 +404,7 @@ void render_lines(int start, int step) {
 	printf("Me rendered every %d from %d only\n", step, start);
 }
 
+#if THREADS
 vector<thread> threads_bands(int n) {
 	vector<thread> threads;
 	vector<int> splits;
@@ -373,7 +422,6 @@ vector<thread> threads_interlaced(int n) {
 	return threads;
 }
 
-#if THREADS
 void render() {
 	auto threads = threads_interlaced(thread::hardware_concurrency());
 	for (thread &th: threads)
