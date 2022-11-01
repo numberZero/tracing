@@ -147,7 +147,13 @@ static vector<thread> threads_interlaced(int n) {
 }
 
 void render() {
-	auto threads = threads_interlaced(thread::hardware_concurrency());
+	int n = thread::hardware_concurrency();
+#if BEST
+	n /= 2; // HACK to not overheat the CPU
+#endif
+	if (n <= 0)
+		n = 1;
+	auto threads = threads_interlaced(n);
 	for (thread &th: threads)
 		th.join();
 }

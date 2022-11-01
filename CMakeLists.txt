@@ -40,8 +40,12 @@ target_link_libraries(prog3
 	Threads::Threads
 )
 
+option(MULTITHREAD "Use multithreading" ON)
+option(DRAFT "Draft rendering" ON)
+
 target_compile_definitions(prog3 PRIVATE
-	THREADS=1
+	THREADS=$<BOOL:${MULTITHREAD}>
+	BEST=$<NOT:$<BOOL:${DRAFT}>>
 )
 
 target_include_directories(prog3 PRIVATE
