@@ -36,8 +36,18 @@ add_executable(prog3
 	trace.cxx
 	)
 
+add_executable(prog4
+	prog4.cxx
+	)
+
 target_link_libraries(prog3
 	Threads::Threads
+)
+
+target_link_libraries(prog4
+	Threads::Threads
+	glfw
+	GL
 )
 
 option(MULTITHREAD "Use multithreading" ON)
