@@ -350,14 +350,70 @@ struct Track {
 	float length;
 };
 
+class Region {
+public:
+	virtual bool contains(vec2 p) const noexcept = 0;
+};
+
+class EmptyRegion final: public Region {
+public:
+	bool contains([[maybe_unused]] vec2 p) const noexcept override {
+		return false;
+	}
+};
+
 class Space {
 public:
 	virtual Track trace(Ray ray, float maxd) const = 0;
 };
 
+class Subspace: public Space {
+public:
+	Region const *region;
+};
+
 struct Transition {
 	Space *into;
 	Shape *shape;
+};
+
+/// Описывает выпуклый многоугольник.
+class ConvexPoly final: public Region {
+private:
+	struct Segment {
+		vec2 normal;
+		float threshold;
+	};
+
+	std::vector<Segment> segments;
+
+public:
+	/// Создаёт многоугольник с указанными вершинами.
+	/// @note Выпуклость не проверяется.
+	ConvexPoly(std::initializer_list<vec2> points) {
+		int n = points.size();
+		if (n < 3)
+			throw std::invalid_argument("There must be at least three points");
+		segments.reserve(n);
+		vec2 a = *std::prev(points.end());
+		for (vec2 b: points) {
+			vec2 u = b - a;
+			vec2 v = {u.y, -u.x};
+			segments.push_back({
+				.normal = v,
+				.threshold = dot(a, v),
+			});
+			a = b;
+		}
+	}
+
+	bool contains(vec2 p) const noexcept override {
+		for (auto &&seg: segments) {
+			if (dot(p, seg.normal) > seg.threshold)
+				return false;
+		}
+		return true;
+	}
 };
 
 class ConvexBoundary {
@@ -418,34 +474,16 @@ public:
 	}
 };
 
-class FlatSpace: public Space {
+class FlatSubspace: public Subspace {
 public:
-	std::vector<Transition> transitions;
 	SpaceDesc const *desc = &EuclideanSpace::instance;
 
-	Track trace(Ray ray, float maxd) const final override {
-		Track track = {};
-
-		ray = desc->fromGlobal(ray);
-		vec2 hitpoint = ray.base + maxd * ray.dir;
-		for (auto &trans: transitions) {
-			Hit h;
-			if (!trans.shape->hit(&h, ray))
-				continue;
-			float dist = distance(ray.base, h.point);
-			if (dist > maxd)
-				continue;
-			hitpoint = h.point;
-			maxd = dist;
-			track.next = trans.into;
-		}
-
-		track.length = maxd;
-
-// 		Ray r = desc->toGlobal({hitpoint, ray.dir});
-// 		return {{ray.base, r.base}, r.dir, next};
-
+	Track trace(Ray ray, float maxd) const override {
 		static constexpr float dt = 1e-2;
+
+		Track track = {};
+		ray = desc->fromGlobal(ray);
+
 		int steps = max(1, int(maxd / dt));
 		track.points.reserve(steps + 1);
 		for (int k = 0; k <= steps; k++) {
@@ -454,13 +492,16 @@ public:
 			Ray r = desc->toGlobal({p, ray.dir});
 			track.points.push_back(r.base);
 			track.dir = r.dir;
+			track.length = t;
+			if (!region->contains(r.base))
+				break;
 		}
 
 		return track;
 	}
 };
 
-class RiemannSpace: public Space {
+class RiemannSubspace: public Subspace {
 public:
 	RiemannMetric<2> *metric;
 
@@ -468,7 +509,6 @@ public:
 		static constexpr float dt = 1e-2;
 		static constexpr float eta = 1e-2;
 		Track t;
-		t.length = maxd;
 
 		int steps = maxd / dt;
 		t.points.reserve(steps + 1);
@@ -477,8 +517,9 @@ public:
 		v /=  length(p, v);
 		t.points.push_back(p);
 		for (int k = 0; k < steps; k++) {
-			auto p1 = p;
-			auto v1 = v;
+			t.length = k * dt;
+			if (!region->contains(p))
+				break;
 			auto a = covar(metric->krist(p), v);
 			if (dt * ::length(a) > eta) {
 				int substeps = ceil(dt * ::length(a) / eta);
@@ -499,34 +540,14 @@ public:
 				p += dt * v;
 			}
 			t.points.push_back(p);
-			if (Space *s = next({p1, v1}, p)) {
-				t.next = s;
-				t.length = k * dt;
-				break;
-			}
 		}
-		t.dir = v;
+		t.dir = normalize(v);
 		return t;
 	}
 
 	float length(vec2 pos, vec2 vec) const {
 		mat2 g = metric->metric(pos);
 		return sqrt(dot(vec, g * vec));
-	}
-
-	virtual Space *next([[maybe_unused]] Ray ray, [[maybe_unused]] vec2 p2) const {
-		return nullptr;
-	}
-};
-
-class ConvexRiemannSubspace: public RiemannSpace {
-public:
-	ConvexBoundary *boundary;
-
-	Space *next(Ray ray, vec2 p2) const noexcept final override {
-		if (boundary->inside(p2))
-			return nullptr;
-		return boundary->next(ray);
 	}
 };
 /*
@@ -545,34 +566,81 @@ struct Boundary {
 	Gluing *gluing;
 };
 */
-class Universe {
+
+struct GlobalTrack {
+	struct Point {
+		Space const *space;
+		vec2 pos;
+	// 	vec2 dir;
+	};
+	std::vector<Point> points;
+	vec2 dir;
+	float length;
+};
+
+class BooleanRegion final: public Region {
 public:
-/*
-	std::vector<ObjectLocation> objectLocations;
-	std::vector<Boundary> flatRiemann;
-	std::vector<Boundary> flatFlat;
+	std::vector<Region const *> positive;
+	std::vector<Region const *> negative;
 
-	std::vector<Space *> subspaces;
-	std::vector<Object *> objects;
-
-	Next next(Ray ray) override {
-		Next n = Flat::next(ray);
-
-		for (auto *space: subspaces) {
-			Hit h;
-			if (space->shape->hit(&h, ray)) {
-				float t = distance(ray.base, h.point);
-				if (t > n.dist)
-					continue;
-				n.region = space;
-				n.pos = h.point;
-				n.dist = t;
-			}
-		}
-
-		return n;
+	bool contains(vec2 p) const noexcept override {
+		for (auto r: positive)
+			if (!r->contains(p))
+				return false;
+		for (auto r: negative)
+			if (r->contains(p))
+				return false;
+		return true;
 	}
-*/
+};
+
+class Universe {
+private:
+	FlatSubspace root;
+	BooleanRegion root_region;
+	std::vector<Subspace *> subspaces;
+
+public:
+	Universe() {
+		root.desc = &EuclideanSpace::instance;
+		root.region = &root_region;
+	}
+
+	void add(Subspace *space) {
+		subspaces.push_back(space);
+		root_region.negative.push_back(space->region);
+	}
+
+	GlobalTrack trace(Ray ray, float max_distance) const {
+		static constexpr float eps = 1.0e-1f;
+		GlobalTrack track;
+		while (max_distance > eps) {
+			Subspace const *space = &root;
+			for (auto *s: subspaces) {
+				if (s->region->contains(ray.base)) {
+					space = s;
+					break;
+				}
+			}
+
+			Track t = space->trace(ray, max_distance);
+			assert(t.points.size() > 0);
+			assert(t.length > 0);
+
+			ray.base = t.points.back();
+			ray.dir = t.dir;
+			max_distance -= t.length;
+
+			track.points.reserve(track.points.size() + t.points.size());
+			if (space == &root)
+				space = nullptr;
+			for (auto pt: t.points)
+				track.points.push_back({space, pt});
+			track.length += t.length;
+		}
+		track.dir = ray.dir;
+		return track;
+	}
 };
 
 class SegmentedTransitions {
@@ -674,7 +742,7 @@ void test() {
 // 	exit(0);
 }
 
-#define USE_TRANSFORM 1
+#define USE_TRANSFORM 0
 #define RENDER_FULL_RIEMANN 0
 
 void render() {
@@ -683,12 +751,10 @@ void render() {
 // 	CoilMetric cm;
 // 	cm.coil_scale = 2.0 + sin(.2 * t0);
 
-	FlatSpace eucl;
-
 	FastSpace sd;
 // 	sd.inner_hl = clamp(1.125f - .875f * sinf(.2 * t0), sd.inner_pad, sd.outer_hl);
 
-	FlatSpace fs;
+	FlatSubspace fs;
 	fs.desc = &sd;
 
 	BoxSmoother bs;
@@ -696,11 +762,47 @@ void render() {
 	bs.halfwidth = 0.5f;
 	bs.pad = 0.125f;
 
-	ConvexRiemannSubspace rsn;
+	RiemannSubspace rsn;
 	rsn.metric = &bs;
 
-	ConvexRiemannSubspace rsp;
+	RiemannSubspace rsp;
 	rsp.metric = &bs;
+
+	float outer_pad = 0.25f;
+	ConvexPoly fs_bnd{
+		{-(sd.outer_hl + outer_pad), -(bs.halfwidth - bs.pad)},
+		{(sd.outer_hl + outer_pad), -(bs.halfwidth - bs.pad)},
+		{(sd.outer_hl + outer_pad), (bs.halfwidth - bs.pad)},
+		{-(sd.outer_hl + outer_pad), (bs.halfwidth - bs.pad)},
+	};
+	fs.region = &fs_bnd;
+
+	ConvexPoly rsn_bnd1{
+		{-sd.outer_hl, -bs.halfwidth},
+		{sd.outer_hl, -bs.halfwidth},
+		{sd.outer_hl, 0.0f},
+		{-sd.outer_hl, 0.0f},
+	};
+	BooleanRegion rsn_bnd;
+	rsn_bnd.positive.push_back(&rsn_bnd1);
+	rsn_bnd.negative.push_back(&fs_bnd);
+	rsn.region = &rsn_bnd;
+
+	ConvexPoly rsp_bnd1{
+		{-sd.outer_hl, 0.0f},
+		{sd.outer_hl, 0.0f},
+		{sd.outer_hl, bs.halfwidth},
+		{-sd.outer_hl, bs.halfwidth},
+	};
+	BooleanRegion rsp_bnd;
+	rsp_bnd.positive.push_back(&rsp_bnd1);
+	rsp_bnd.negative.push_back(&fs_bnd);
+	rsp.region = &rsp_bnd;
+
+	Universe u;
+	u.add(&fs);
+	u.add(&rsn);
+	u.add(&rsp);
 
 #if RENDER_FULL_RIEMANN
 	RiemannSpace rs;
@@ -785,53 +887,8 @@ void render() {
 		{&rsn1, {1.0f, 0.1f, 0.4f, 0.75f}},
 	};
 #else
-	SegmentedTransitions eucl_to_pipe({
-		{-sd.outer_hl, -bs.halfwidth},
-		{sd.outer_hl, -bs.halfwidth},
-		{sd.outer_hl, -(bs.halfwidth - bs.pad)},
-		{sd.outer_hl, (bs.halfwidth - bs.pad)},
-
-		{sd.outer_hl, bs.halfwidth},
-		{-sd.outer_hl, bs.halfwidth},
-		{-sd.outer_hl, (bs.halfwidth - bs.pad)},
-		{-sd.outer_hl, -(bs.halfwidth - bs.pad)},
-	}, {
-		&rsn, &rsn, &fs, &rsp, &rsp, &rsp, &fs, &rsn,
-	});
-	eucl.transitions.insert(eucl.transitions.end(), eucl_to_pipe.begin(), eucl_to_pipe.end());
-
-	SegmentedTransitions pipe_out({
-		{-sd.inner_hl, -(bs.halfwidth - bs.pad)},
-		{-sd.inner_hl, (bs.halfwidth - bs.pad)},
-		{sd.inner_hl, (bs.halfwidth - bs.pad)},
-		{sd.inner_hl, -(bs.halfwidth - bs.pad)},
-	}, {
-		&eucl, &rsp, &eucl, &rsn,
-	});
-	fs.transitions.insert(fs.transitions.end(), pipe_out.begin(), pipe_out.end());
-
-	ConvexBoundary pipe_top({
-		{-sd.outer_hl, bs.halfwidth - bs.pad},
-		{-sd.outer_hl, bs.halfwidth},
-		{sd.outer_hl, bs.halfwidth},
-		{sd.outer_hl, bs.halfwidth - bs.pad},
-	}, {
-		&eucl, &eucl, &eucl, &fs,
-	});
-	rsp.boundary = &pipe_top;
-
-	ConvexBoundary pipe_bottom({
-		{sd.outer_hl, -(bs.halfwidth - bs.pad)},
-		{sd.outer_hl, -bs.halfwidth},
-		{-sd.outer_hl, -bs.halfwidth},
-		{-sd.outer_hl, -(bs.halfwidth - bs.pad)},
-	}, {
-		&eucl, &eucl, &eucl, &fs,
-	});
-	rsn.boundary = &pipe_bottom;
-
-	std::unordered_map<Space *, vec4> colors = {
-		{&eucl, {0.1f, 0.4f, 1.0f, 0.75f}},
+	std::unordered_map<Space const *, vec4> colors = {
+		{nullptr, {0.1f, 0.4f, 1.0f, 0.75f}},
 		{&fs, {0.4f, 1.0f, 0.1f, 0.75f}},
 		{&rsp, {1.0f, 0.4f, 0.1f, 0.75f}},
 		{&rsn, {1.0f, 0.1f, 0.4f, 0.75f}},
@@ -863,47 +920,20 @@ void render() {
 #endif
 
 	for (int k = -120; k <= 120; k++) {
-		Space *s = &eucl;
 		Ray r;
 		r.base = {-5.2f, 0.0f};
 		r.dir = normalize(vec2(1.0, k / 120.0));
-		float rem = 20.0f;
-		while (rem > 1.0f) {
-			vec4 color = colors[s];
-			Track track = s->trace(r, rem);
-			assert(track.points.size() > 0);
+		auto track = u.trace(r, 20.0f);
+		glBegin(GL_LINE_STRIP);
+		for (auto pt: track.points) {
+			vec4 color{0.0f, 1.0f, 1.0f, 1.0f};
+			auto icolor = colors.find(pt.space);
+			if (icolor != colors.end())
+				color = icolor->second;
 			glColor4fv(value_ptr(color));
-			glBegin(GL_LINE_STRIP);
-			for (auto pt: track.points)
-				glVertex2f(pt.x, pt.y);
-			glEnd();
-
-#if RENDER_SWITCH_DIRS
-			float in_len = 0.05f;
-			float out_len = 0.1f;
-			glColor4f(1.0, 1.0, 0.0, 1.0);
-			glBegin(GL_LINE_STRIP);
-			glVertex2fv(value_ptr(track.points.back() - in_len * track.dir));
-			glVertex2fv(value_ptr(track.points.back() + out_len * track.dir));
-			glEnd();
-#endif
-
-			if (!track.next) {
-				float r = 1.0f / 16.0f;
-				vec2 pt = track.points.back();
-				glBegin(GL_LINES);
-				glVertex2f(pt.x - r, pt.y - r);
-				glVertex2f(pt.x + r, pt.y + r);
-				glVertex2f(pt.x - r, pt.y + r);
-				glVertex2f(pt.x + r, pt.y - r);
-				glEnd();
-				break;
-			}
-			rem -= track.length;
-			r.base = track.points.back();
-			r.dir = track.dir;
-			s = track.next;
+			glVertex2f(pt.pos.x, pt.pos.y);
 		}
+		glEnd();
 	}
 // 	printf("%.3f: |a| ≈ %.3f(1 ± %.3f) ∈ [%.3f, %.3f]\n",
 // 	       sd.inner_hl, rsp.a_len.mean(), rsp.a_len.reldev(), rsp.a_len.min(), rsp.a_len.max());
