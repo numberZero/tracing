@@ -44,3 +44,16 @@ public:
 		return ret;
 	}
 };
+
+template <int N>
+class MovedRiemannMetric: public RiemannMetric<N> {
+public:
+	RiemannMetric<N> *base = nullptr;
+	matn<N> inv_transform = matn<N>(1.0f); // must be orthogonal
+	vecn<N> origin = vecn<N>(0.0f);
+
+	decompn<N> halfmetric(vecn<N> pos) const override {
+		decompn<N> d = base->halfmetric(inv_transform * (pos - origin));
+		return {d.ortho * inv_transform, d.diag};
+	}
+};
