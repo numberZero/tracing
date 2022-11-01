@@ -10,6 +10,8 @@
 #define COIL 1
 
 using glm::vec2, glm::mat2;
+using glm::vec3, glm::mat3;
+using glm::vec4, glm::mat4;
 using glm::dot;
 using std::sqrt;
 
@@ -207,20 +209,99 @@ vec<N> covar(tens<N> G, vec<N> v) {
 	return ret;
 }
 
+struct ConvexShape {
+	std::vector<vec2> rel_points;
+	std::vector<vec2> normals;
+	std::vector<vec2> abs_points;
+	std::vector<vec3> colliders;
+	vec2 pos;
+};
+
+ConvexShape place_shape(vec2 p, std::span<vec2 const> contour) {
+	auto h = halfmetric(p);
+	mat2 m = transpose(h.ortho) * diagonal(1.f / h.diag) * h.ortho;
+	ConvexShape ret;
+
+	ret.pos = p;
+
+	ret.rel_points.insert(end(ret.rel_points), begin(contour), end(contour));
+
+	ret.normals.reserve(contour.size());
+	vec2 a = ret.rel_points.back();
+	for (vec2 b: ret.rel_points) {
+		vec2 delta = b - a;
+		vec2 n = normalize(vec2{delta.y, -delta.x});
+		ret.normals.push_back(n);
+		a = b;
+	}
+
+	for (vec2 off: contour)
+		ret.abs_points.push_back(p + m * off);
+
+	ret.colliders.reserve(contour.size());
+	a = ret.abs_points.back();
+	for (vec2 b: ret.abs_points) {
+		vec2 delta = b - a;
+		vec2 n = normalize(vec2{delta.y, -delta.x});
+		ret.colliders.push_back({-n, dot(n, a)});
+		a = b;
+	}
+
+	return ret;
+}
+
+static auto const ts1 = place_shape({0, coil_r}, {{{-.125, -.125}, {.000, .125}, {.125, -.125}}});
+
+static vec2 globalize(vec2 p, vec2 v) {
+	auto h = halfmetric(p);
+	return transpose(h.ortho) * diagonal(1.f / h.diag) * h.ortho * v;
+}
+
 template <int N>
 static std::vector<vec<N>> trace(vec<N> base, vec<N> dir, float distance, float dt = 1e-3) {
 	int steps = distance / dt;
 	std::vector<vec<N>> result;
 	result.reserve(steps + 1);
-	auto h = halfmetric(base);
 	auto p = base;
-	auto v = h.ortho * (1.f / h.diag) * transpose(h.ortho) * dir;
+	auto v = globalize(base, dir);
 	v /=  length(p, v);
 	result.push_back(p);
 	for (int k = 0; k < steps; k++) {
 		vec<N> a = covar(krist(p), v);
 		v += dt * a;
 		p += dt * v;
+/*
+		for (auto cdr: ts1.colliders) {
+			if (dot({p2, 1.f}, cdr) > 0.f)
+				goto no_collision;
+		}
+
+		for (int k = 0; k < ts1.colliders.size(); k++) {
+			if (dot({p, 1.f}, ts1.colliders[k]) > 0.f) {
+				vec2 n = ts1.normals[k];
+				goto collision_processed;
+			}
+		}
+		printf("WARNING: Collided part not found!\n");*/
+
+// 	collision_processed:
+// 		break;
+/*
+		static vec2 const pp = vec2(-2, 2);
+		static vec2 const n = normalize(coglobalize(pp, vec2(1)));
+		static vec3 const nn = {n, -dot(n, pp)};
+		if (dot({p2, 1.f}, nn) <= 0 && dot({p, 1.f}, nn) > 0) {
+			float t0 = -dot({p, 1.f}, nn) / dot({v, 0.f}, nn);
+			vec2 p0 = p + t0 * v;
+// 			if (t0 > dt * 1.000001)
+// 				printf("p(%.6f, %.6f) p2(%.6f, %.6f) p0(%.6f, %.6f) dt(%.6f) t0(%.6f)\n", p.x, p.y, p2.x, p2.y, p0.x, p0.y, dt, t0);
+			if (p0.x > pp.x - .2 && p0.x < pp.x + .1) {
+				p2 = p;
+			}
+		}
+*/
+// 	no_collision:
+// 		p = p2;
 		result.push_back(p);
 	}
 	return result;
@@ -264,7 +345,7 @@ int main() {
 	for (int j = -64; j <= 64; j++) {
 		float x = j / 64.0f;
 		printf("%d: %.3f\n", j, x);
-		auto line = trace(vec2{coil_r, 0.0f}, vec2{x, 1.0f}, 6.28f * coil_r / coil_scale);
+		auto line = trace(vec2{coil_r, 0}, vec2{x, 1.0f}, 6.28f * coil_r / coil_scale);
 		draw_path(svg, "ray2", {line}, false, 10);
 	}
 	fprintf(svg, "<circle class=\"inner\" r=\"%.3f\" />", coil_r - coil_w);
@@ -281,6 +362,11 @@ int main() {
 	draw_box(svg, "inner", box_a, box_b);
 	draw_box(svg, "outer", box_a - box_m, box_b + box_m);
 #endif
+	for (int j = -8; j <= 8; j++) {
+		float x = j;
+		draw_path(svg, j ? "grid" : "grid major", {{{-8.f, x}, {8.f, x}}}, false);
+		draw_path(svg, j ? "grid" : "grid major", {{{x, -8.f}, {x, 8.f}}}, false);
+	}
 	for (int j = -64; j <= 64; j++)
 	for (int i = -64; i <= 64; i++) {
 		vec2 p = vec2(i, j) / 8.f;
@@ -288,6 +374,7 @@ int main() {
 		mat2 s = transpose(h.ortho) * diagonal(1.f / h.diag) / 64.f;
 		draw_path(svg, "mark", {{p + s[0], p + s[1], p - s[0], p - s[1]}}, true);
 	}
+	draw_path(svg, "object", ts1.abs_points, true);
 	fprintf(svg, "</svg>");
 	fclose(svg);
 }
