@@ -62,3 +62,7 @@ target_include_directories(prog3 PRIVATE
 	.
 	pcg-cpp/include/
 )
+
+target_include_directories(prog4 PRIVATE
+	.
+)
