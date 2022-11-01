@@ -10,12 +10,9 @@
 #include <GL/glext.h>
 #include "math.hxx"
 #include "desc/riemann.hxx"
+#include "desc/ray.hxx"
+#include "desc/flat.hxx"
 #include "averager.hxx"
-
-struct Ray {
-	vec2 base;
-	vec2 dir; // normalized!
-};
 
 struct Hit {
 	vec2 point;
