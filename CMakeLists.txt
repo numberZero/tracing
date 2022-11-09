@@ -58,11 +58,8 @@ target_compile_definitions(prog3 PRIVATE
 	BEST=$<NOT:$<BOOL:${DRAFT}>>
 )
 
-target_include_directories(prog3 PRIVATE
-	.
-	pcg-cpp/include/
-)
+include_directories(.)
 
-target_include_directories(prog4 PRIVATE
-	.
+target_include_directories(prog3 PRIVATE
+	pcg-cpp/include/
 )
