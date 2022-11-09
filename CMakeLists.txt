@@ -40,11 +40,21 @@ add_executable(prog4
 	prog4.cxx
 	)
 
+add_executable(prog5
+	prog5.cxx
+	)
+
 target_link_libraries(prog3
 	Threads::Threads
 )
 
 target_link_libraries(prog4
+	Threads::Threads
+	glfw
+	GL
+)
+
+target_link_libraries(prog5
 	Threads::Threads
 	glfw
 	GL
