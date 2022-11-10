@@ -46,8 +46,14 @@ void paint(GLFWwindow* window) {
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_MULTISAMPLE);
 
+	glLoadIdentity();
+	glScalef(0.5f, 0.5f, 0.5f);
+
 	render();
 
+	glLoadIdentity();
+
+	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
 	glLoadIdentity();
 
@@ -78,6 +84,7 @@ void paint(GLFWwindow* window) {
 	glDisable(GL_TEXTURE_2D);
 
 	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
 
 	glfwSwapBuffers(window);
 }
@@ -91,8 +98,10 @@ void resized(GLFWwindow* window, int width, int height) {
 	::height = height;
 	glViewport(0, 0, width, height);
 	::winsize = sqrt(width * height / 2) / 4;
+	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glScalef(winsize / width, winsize / height, 1.0);
+	glMatrixMode(GL_MODELVIEW);
 	if (bb) {
 		glDeleteTextures(1, &bb);
 		glDeleteTextures(1, &mb);
