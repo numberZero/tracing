@@ -53,81 +53,72 @@ struct Coefs {
 
 static constexpr float eps = 1e-4;
 
-class InwardsBoundary final: public FlatExit {
+class InwardsBoundary final: public SubspaceBoundary {
 public:
 	Params params;
 	Subspace *side;
 	Subspace *channel;
 
-	float distance(vec2 from, vec2 dir) const override {
-		vec2 radius = {params.outer_half_length, params.outer_radius};
-		vec2 d = -sign(dir) * radius - from;
-		vec2 dists = d / dir;
-		vec2 px = from + dists.x * dir;
-		vec2 py = from + dists.y * dir;
-		if (abs(px.y) <= radius.y)
-			return dists.x - eps;
-		if (abs(py.x) <= radius.x)
-			return dists.y - eps;
-		return std::numeric_limits<float>::infinity();
-	}
-
-	TrackPoint leave(vec2 pos, vec2 dir) const override {
+	SwitchPoint leave(vec2 from, vec2 dir) const override {
+		const vec2 radius = {params.outer_half_length, params.outer_radius};
+		const vec2 d = -sign(dir) * radius - from;
+		const vec2 dists = d / dir;
+		const vec2 px = from + dists.x * dir;
+		const vec2 py = from + dists.y * dir;
+		float dist = std::numeric_limits<float>::infinity();
+		if (dists.x > 0.0f && abs(px.y) <= radius.y)
+			dist = dists.x - eps;
+		if (dists.y > 0.0f && abs(py.x) <= radius.x)
+			dist = dists.y - eps;
+		if (!std::isfinite(dist))
+			return {{nullptr, from, dir}, {nullptr, from, dir}};
+		vec2 pos = from + dist * dir;
+		const TrackPoint pt1 = {nullptr, pos, dir};
 		if (abs(pos.y) < params.inner_radius) {
 			pos.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			return {channel, pos, dir};
+			return {pt1, {channel, pos, dir}};
 		} else {
-			return {side, pos, dir};
+			return {pt1, {side, pos, dir}};
 		}
 	}
 };
 
-class ChannelOutwardsBoundary final: public FlatExit {
+class ChannelBoundary final: public SubspaceBoundary {
 public:
 	Params params;
 	Subspace *outer;
-
-	float distance(vec2 from, vec2 dir) const override {
-		float d = sign(dir.x) * params.inner_half_length - from.x;
-		float dist = d / dir.x;
-		debugf("channel->outer (% .1f, % .1f)>>(% .3f, % .3f) @ %.3f\n", from.x, from.y, dir.x, dir.y, dist);
-		return dist + eps;
-	}
-
-	TrackPoint leave(vec2 pos, vec2 dir) const override {
-		debugf("channel->outer (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
-		pos.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
-		debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
-		return {outer, pos, dir};
-	}
-};
-
-class ChannelSideBoundary final: public FlatExit {
-public:
-	Params params;
 	Subspace *side;
 
-	float distance(vec2 from, vec2 dir) const override {
-		float d = sign(dir.y) * params.inner_radius - from.y;
-		float dist = d / dir.y;
-		debugf("channel->side (% .1f, % .1f)>>(% .3f, % .3f) @ %.3f\n", from.x, from.y, dir.x, dir.y, dist);
-		return dist - eps;
-	}
+	SwitchPoint leave(vec2 from, vec2 dir) const override {
+		const vec2 radius = {params.inner_half_length, params.inner_radius};
+		const vec2 d = sign(dir) * radius - from;
+		const vec2 dist = d / dir;
+		const float dist_outer = dist.x + eps;
+		const float dist_side = dist.y;// + eps;
 
-	TrackPoint leave(vec2 pos, vec2 dir) const override {
-		Coefs cs(params);
-		debugf("channel->side (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
-		if (abs(pos.x) < cs.x1) {
-			pos.x *= cs.y1 / cs.x1;
-			dir.x *= cs.y1 / cs.x1;
-		} else if (abs(pos.x) < cs.x2) {
-			dir.x *= 2 * cs.w * (abs(pos.x) - cs.x0);
-			pos.x = copysign(cs.y0 + cs.w * sqr(abs(pos.x) - cs.x0), pos.x);
+		vec2 pos = from + min(dist_outer, dist_side) * dir;
+		const TrackPoint pt1 = {nullptr, pos, dir};
+
+		if (dist_outer <= dist_side) {
+			debugf("channel->outer (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
+			pos.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
+			debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
+			return {pt1, {outer, pos, dir}};
 		} else {
-			pos.x += copysign(cs.y2 - cs.x2, pos.x);
+			Coefs cs(params);
+			debugf("channel->side (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
+			if (abs(pos.x) < cs.x1) {
+				pos.x *= cs.y1 / cs.x1;
+				dir.x *= cs.y1 / cs.x1;
+			} else if (abs(pos.x) < cs.x2) {
+				dir.x *= 2 * cs.w * (abs(pos.x) - cs.x0);
+				pos.x = copysign(cs.y0 + cs.w * sqr(abs(pos.x) - cs.x0), pos.x);
+			} else {
+				pos.x += copysign(cs.y2 - cs.x2, pos.x);
+			}
+			debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
+			return {pt1, {side, pos, normalize(dir)}};
 		}
-		debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
-		return {side, pos, normalize(dir)};
 	}
 };
 
@@ -171,6 +162,8 @@ public:
 	TrackPoint leave(vec2 pos, vec2 dir) const override {
 		Coefs cs(params);
 		if (abs(pos.y) >= params.inner_radius)
+			return {outer, pos, dir};
+		if (abs(pos.x) >= params.outer_half_length && sign(dir.x) == sign(pos.x))
 			return {outer, pos, dir};
 		debugf("side->channel (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
 		if (abs(pos.x) < cs.y1) {
@@ -242,15 +235,13 @@ void render() {
 	InwardsBoundary ibnd;
 	ibnd.side = &side;
 	ibnd.channel = &channel;
-	ChannelOutwardsBoundary cobnd;
-	ChannelSideBoundary csbnd;
-	cobnd.outer = &outer;
-	csbnd.side = &side;
+	ChannelBoundary cbnd;
+	cbnd.outer = &outer;
+	cbnd.side = &side;
 	sbnd.outer = &outer;
 	sbnd.channel = &channel;
-	outer.exits.push_back(&ibnd);
-	channel.exits.push_back(&cobnd);
-	channel.exits.push_back(&csbnd);
+	outer.boundary = &ibnd;
+	channel.boundary = &cbnd;
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},

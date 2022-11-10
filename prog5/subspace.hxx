@@ -39,22 +39,22 @@ public:
 	virtual SwitchPoint leave(vec2 from, vec2 dir) const = 0;
 };
 
-class FlatSubspace2: public Subspace {
+class FlatSubspace: public Subspace {
 public:
 	static constexpr float dt = 1e-1;
 	SubspaceBoundary *boundary;
 
 	TrackPoint trace(vec2 from, vec2 dir) const override {
-		SwitchPoint pt = boundary->leave(from, dir);
-		assert(pt.from.space == this);
-		return pt.to;
+		SwitchPoint sp = boundary->leave(from, dir);
+		assert(!sp.from.space || sp.from.space == this);
+		return sp.to;
 	}
 
 	TrackSegment traceEx(vec2 from, vec2 dir) const override {
 		SwitchPoint sp = boundary->leave(from, dir);
-		assert(sp.from.space == this);
+		assert(!sp.from.space || sp.from.space == this);
 		TrackSegment track;
-		track.space = sp.from.space;
+		track.space = this;
 		track.dirBegin = dir;
 		track.dirEnd = sp.from.dir;
 		track.end = sp.to;
@@ -69,53 +69,6 @@ public:
 			track.points[0] = from;
 		}
 		return track;
-	}
-};
-
-/// Выход из плоского пространства
-class FlatExit {
-public:
-	virtual float distance(vec2 from, vec2 dir) const = 0;
-	virtual TrackPoint leave(vec2 pos, vec2 dir) const = 0;
-};
-
-class FlatSubspace: public Subspace, private SubspaceBoundary {
-public:
-	std::vector<FlatExit *> exits;
-
-	FlatSubspace() {
-		impl.boundary = this;
-	}
-
-	TrackPoint trace(vec2 from, vec2 dir) const override {
-		return impl.trace(from, dir);
-	}
-
-	TrackSegment traceEx(vec2 from, vec2 dir) const override {
-		return impl.traceEx(from, dir);
-	}
-
-private:
-	FlatSubspace2 impl;
-
-	SwitchPoint leave(vec2 from, vec2 dir) const override {
-		float dist = std::numeric_limits<float>::infinity();
-		FlatExit *exit = nullptr;
-		for (auto *exit2: exits) {
-			float dist2 = exit2->distance(from, dir);
-			if (dist2 < 0.0f)
-				continue;
-			if (dist2 < dist) {
-				exit = exit2;
-				dist = dist2;
-			}
-		}
-		if (exit) {
-			from += dist * dir;
-			return {{&impl, from, dir}, exit->leave(from, dir)};
-		} else {
-			return {{&impl, from, dir}, {nullptr, vec2(std::numeric_limits<float>::quiet_NaN()), dir}};
-		}
 	}
 };
 
