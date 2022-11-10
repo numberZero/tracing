@@ -188,61 +188,6 @@ public:
 };
 
 void test() {
-	Params params;
-	Coefs cs(params);
-	FlatSubspace outer, channel;
-	RiemannSubspace side;
-	ChannelSideMetric side_metric;
-	SideBoundary sbnd;
-	side.metric = &side_metric;
-	side.map = &sbnd;
-	InwardsBoundary ibnd;
-	ibnd.side = &side;
-	ibnd.channel = &channel;
-	ChannelOutwardsBoundary cobnd;
-	ChannelSideBoundary csbnd;
-// 	SideOutwardsBoundary sobnd;
-// 	SideChannelBoundary scbnd;
-	cobnd.outer = &outer;
-	csbnd.side = &side;
-	sbnd.outer = &outer;
-	sbnd.channel = &channel;
-	outer.exits.push_back(&ibnd);
-// 	side.exits.push_back(&sobnd);
-// 	side.exits.push_back(&scbnd);
-	channel.exits.push_back(&cobnd);
-	channel.exits.push_back(&csbnd);
-
-	std::unordered_map<Subspace const *, char const *> names = {
-		{nullptr, "none"},
-		{&outer, "outer"},
-		{&channel, "channel"},
-		{&side, "side"},
-	};
-
-	TrackPoint pt0 = {nullptr, {-4.8, 0.0}, {-0.168, 0.986}};
-	TrackPoint pt1 = sbnd.leave(pt0.pos, pt0.dir);
-	TrackPoint pt2 = csbnd.leave(pt1.pos, pt1.dir);
-	debugf("(% .1f, % .1f)>>(% .3f, % .3f) %s\n", pt0.pos.x, pt0.pos.y, pt0.dir.x, pt0.dir.y, "0");
-	debugf("(% .1f, % .1f)>>(% .3f, % .3f) %s\n", pt1.pos.x, pt1.pos.y, pt1.dir.x, pt1.dir.y, "1");
-	debugf("(% .1f, % .1f)>>(% .3f, % .3f) %s\n", pt2.pos.x, pt2.pos.y, pt2.dir.x, pt2.dir.y, "2");
-
-	TrackPoint pt;
-	pt.pos = {-4.0, -6.0};
-	pt.dir = normalize(vec2(-1, 5));
-	pt.space = &outer;
-	int n = 0;
-	for (;;){
-		debugf("(% .1f, % .1f)>>(% .3f, % .3f) %s\n", pt.pos.x, pt.pos.y, pt.dir.x, pt.dir.y, names[pt.space]);
-		if (!pt.space)
-			break;
-		auto next = pt.space->trace(pt.pos, pt.dir);
-		if (!next.space)
-			next.pos = pt.pos;
-		pt = next;
-		if (n++ > 10)
-			break;
-	}
 }
 
 class SpaceVisual {
@@ -308,9 +253,9 @@ void render() {
 	channel.exits.push_back(&csbnd);
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
-		{nullptr, make_shared<SpaceVisual>(vec3{0.9f, 0.1f, 0.4f})},
-		{&outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 0.9f})},
-		{&channel, make_shared<ChannelVisual>(vec3{0.4f, 0.9f, 0.1f})},
+		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
+		{&outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 1.0f})},
+		{&channel, make_shared<ChannelVisual>(vec3{0.4f, 1.0f, 0.1f})},
 		{&side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
@@ -325,26 +270,9 @@ void render() {
 		int n = 0;
 		vec2 p;
 		glBegin(GL_LINE_STRIP);
-// 		while (pt.space) {
-// 			auto visual = visuals[pt.space];
-// 			p = visual->where(pt.pos);
-// 			glColor3fv(value_ptr(visual->color));
-// 			glVertex2fv(value_ptr(p));
-// 			auto next = pt.space->trace(pt.pos, pt.dir);
-// 			if (!next.space)
-// 				next.pos = pt.pos;
-// 			pt = next;
-// 			visual = visuals[pt.space];
-// 			p = visual->where(pt.pos);
-// 			glVertex2fv(value_ptr(p));
-// 			if (n++ > 10) {
-// 				glColor3f(1, 0, 0);
-// 				break;
-// 			}
-// 		}
 		for (;;) {
 			auto visual = visuals[pt.space];
-			glColor3fv(value_ptr(visual->color));
+			glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
 			auto track = pt.space->traceEx(pt.pos, pt.dir);
 			assert(!track.points.empty());
 			for (auto tp: track.points) {
