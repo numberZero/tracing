@@ -131,76 +131,64 @@ public:
 	static constexpr float dt = 1e-2;
 	static constexpr float eta = 1e-2;
 
-	SwitchMap *map;
-	RiemannMetric<2> *metric;
+	const SwitchMap *map;
+	const RiemannMetric<2> *metric;
 
 	TrackPoint trace(vec2 from, vec2 dir) const override {
-		vec2 p = from;
-		vec2 v = dir;
-		v /=  length(p, v);
-		while (map->contains(p)) {
-			auto a = covar(metric->krist(p), v);
-			if (dt * ::length(a) > eta) {
-				int substeps = ceil(dt * ::length(a) / eta);
-				substeps |= substeps >> 16;
-				substeps |= substeps >> 8;
-				substeps |= substeps >> 4;
-				substeps |= substeps >> 2;
-				substeps |= substeps >> 1;
-				substeps++;
-				float subdt = dt / substeps;
-				for (int l = 0; l < substeps; l++) {
-					auto a = covar(metric->krist(p), v);
-					v += subdt * a;
-					p += subdt * v;
-				}
-			} else {
-				v += dt * a;
-				p += dt * v;
-			}
-		}
-		return map->leave(p, normalize(v));
+		TrackPoint end = trace(from, dir, [&](vec2 p, vec2 v) {
+			return map->contains(p);
+		});
+		return map->leave(end.pos, end.dir);
 	}
 
 	TrackSegment traceEx(vec2 from, vec2 dir) const override {
 		TrackSegment track;
+		TrackPoint end = trace(from, dir, [&](vec2 p, vec2 v) {
+			track.points.push_back(p);
+			return map->contains(p);
+		});
+		track.points.shrink_to_fit();
 		track.space = this;
 		track.dirBegin = dir;
-		track.points.push_back(from);
-
-		vec2 p = from;
-		vec2 v = dir;
-		v /=  length(p, v);
-		while (map->contains(p)) {
-			auto a = covar(metric->krist(p), v);
-			if (dt * ::length(a) > eta) {
-				int substeps = ceil(dt * ::length(a) / eta);
-				substeps |= substeps >> 16;
-				substeps |= substeps >> 8;
-				substeps |= substeps >> 4;
-				substeps |= substeps >> 2;
-				substeps |= substeps >> 1;
-				substeps++;
-				float subdt = dt / substeps;
-				for (int l = 0; l < substeps; l++) {
-					auto a = covar(metric->krist(p), v);
-					v += subdt * a;
-					p += subdt * v;
-				}
-			} else {
-				v += dt * a;
-				p += dt * v;
-			}
-			track.points.push_back(p);
-		}
-		track.points.shrink_to_fit();
-		track.dirEnd = normalize(v);
-		track.end = map->leave(p, normalize(v));
+		track.dirEnd = end.dir;
+		track.end = map->leave(end.pos, end.dir);
 		return track;
 	}
 
 	float length(vec2 pos, vec2 vec) const {
 		mat2 g = metric->metric(pos);
 		return sqrt(dot(vec, g * vec));
+	}
+
+private:
+	template <typename F>
+	TrackPoint trace(vec2 from, vec2 dir, F &&pointCb) const {
+		vec2 p = from;
+		vec2 v = dir;
+		v /=  length(p, v);
+
+		while (pointCb(p, v)) {
+			auto a = covar(metric->krist(p), v);
+			if (dt * ::length(a) > eta) {
+				int substeps = ceil(dt * ::length(a) / eta);
+				substeps |= substeps >> 16;
+				substeps |= substeps >> 8;
+				substeps |= substeps >> 4;
+				substeps |= substeps >> 2;
+				substeps |= substeps >> 1;
+				substeps++;
+				float subdt = dt / substeps;
+				for (int l = 0; l < substeps; l++) {
+					auto a = covar(metric->krist(p), v);
+					v += subdt * a;
+					p += subdt * v;
+				}
+			} else {
+				v += dt * a;
+				p += dt * v;
+			}
+		}
+
+		return {this, p, normalize(v)};
 	}
 };
