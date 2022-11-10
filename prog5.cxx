@@ -24,6 +24,8 @@
 // #define debugf(...) printf(__VA_ARGS__)
 #define debugf(...)
 
+using namespace std::literals;
+
 struct Params {
 	float outer_radius = 3.0f;
 	float inner_radius = 2.0f;
@@ -129,11 +131,11 @@ public:
 	}
 };
 
-class ChannelSideMetric: public RiemannMetric<2> {
+class ChannelMetric: public RiemannMetric<2> {
 public:
 	Params params;
 
-	decomp halfmetric(vec2 pos) const noexcept final override {
+	decomp halfmetric(vec2 pos) const noexcept override {
 		Coefs cs(params);
 		float x = pos.x;
 		float dx = 1.0f;
@@ -144,6 +146,15 @@ public:
 			dx /= -2 * cs.w * (abs(x) - cs.x0);
 		}
 		return {mat2(1.0f), {dx, 1.0f}};
+	}
+};
+
+class ChannelSideMetric: public ChannelMetric {
+	decomp halfmetric(vec pos) const noexcept override {
+		auto g = ChannelMetric::halfmetric(pos);
+		float c = clamp((params.outer_radius - abs(pos.y)) / (params.outer_radius - params.inner_radius), 0.0f, 1.0f);
+		c = smoothstep(c);
+		return {g.ortho, mix(vec2(1.0f), g.diag, c)};
 	}
 };
 
@@ -266,10 +277,14 @@ public:
 	}
 };
 
-using namespace std;
+using std::shared_ptr, std::make_shared;
+
+double t_frozen = 0.0;
+double t_offset = 0.0;
+bool active = true;
 
 void render() {
-	double t0 = glfwGetTime();
+ 	double t0 = active ? glfwGetTime() - t_offset : t_frozen;
 
 	Params params;
 	Coefs cs(params);
@@ -299,7 +314,7 @@ void render() {
 		{&side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	float theta = .3*t0;
+	float theta = .3 * t0;
 	int N = 120;
 	for (int k = -N; k < N; k++) {
 		float phi = (.5 + k) * (M_PI / N);
@@ -310,18 +325,37 @@ void render() {
 		int n = 0;
 		vec2 p;
 		glBegin(GL_LINE_STRIP);
-		while (pt.space) {
+// 		while (pt.space) {
+// 			auto visual = visuals[pt.space];
+// 			p = visual->where(pt.pos);
+// 			glColor3fv(value_ptr(visual->color));
+// 			glVertex2fv(value_ptr(p));
+// 			auto next = pt.space->trace(pt.pos, pt.dir);
+// 			if (!next.space)
+// 				next.pos = pt.pos;
+// 			pt = next;
+// 			visual = visuals[pt.space];
+// 			p = visual->where(pt.pos);
+// 			glVertex2fv(value_ptr(p));
+// 			if (n++ > 10) {
+// 				glColor3f(1, 0, 0);
+// 				break;
+// 			}
+// 		}
+		for (;;) {
 			auto visual = visuals[pt.space];
-			p = visual->where(pt.pos);
 			glColor3fv(value_ptr(visual->color));
-			glVertex2fv(value_ptr(p));
-			auto next = pt.space->trace(pt.pos, pt.dir);
-			if (!next.space)
-				next.pos = pt.pos;
-			pt = next;
-			visual = visuals[pt.space];
-			p = visual->where(pt.pos);
-			glVertex2fv(value_ptr(p));
+			auto track = pt.space->traceEx(pt.pos, pt.dir);
+			assert(!track.points.empty());
+			for (auto tp: track.points) {
+				p = visual->where(tp);
+				glVertex2fv(value_ptr(p));
+			}
+			if (track.end.space) {
+				pt = track.end;
+			} else {
+				break;
+			}
 			if (n++ > 10) {
 				glColor3f(1, 0, 0);
 				break;
@@ -358,6 +392,8 @@ float winsize;
 GLuint fbs[2] = {0, 0};
 GLuint bb = 0;
 GLuint mb = 0;
+
+int frames = 0;
 
 void paint(GLFWwindow* window) {
 	glBindFramebuffer(GL_FRAMEBUFFER, fbs[0]);
@@ -412,6 +448,7 @@ void paint(GLFWwindow* window) {
 	glMatrixMode(GL_MODELVIEW);
 
 	glfwSwapBuffers(window);
+	frames++;
 }
 
 void init() {
@@ -442,11 +479,24 @@ void resized(GLFWwindow* window, int width, int height) {
 void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 	if (key == GLFW_KEY_ESCAPE)
 		glfwSetWindowShouldClose(window, GLFW_TRUE);
+	if (action != GLFW_PRESS)
+		return;
+	if (key == GLFW_KEY_SPACE) {
+		double t0 = glfwGetTime();
+		active = !active;
+		if (active) {
+			t_offset = t0 - t_frozen;
+		} else {
+			t_frozen = t0 - t_offset;
+		}
+	}
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
 	std::printf("%.*s\n", (int)length, message);
 }
+
+static const char *title = "Space Refraction 2D v2";
 
 int main() {
 #if TEST
@@ -464,22 +514,34 @@ int main() {
 	glfwWindowHint(GLFW_CONTEXT_ROBUSTNESS, GLFW_NO_RESET_NOTIFICATION);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
-	auto wnd = glfwCreateWindow(1600, 1200, "Space Refraction 2D v2", nullptr, nullptr);
+	auto wnd = glfwCreateWindow(1600, 1200, title, nullptr, nullptr);
 	glfwMakeContextCurrent(wnd);
 	glDebugMessageCallback(debug, nullptr);
 	init();
-	glfwSwapInterval(0);
+	glfwSwapInterval(1);
 	glfwSetWindowRefreshCallback(wnd, paint);
 	glfwSetFramebufferSizeCallback(wnd, resized);
 	glfwSetKeyCallback(wnd, keyed);
 	resized(wnd, 1600, 1200);
 	glfwShowWindow(wnd);
+	double t0 = glfwGetTime();
 	while (!glfwWindowShouldClose(wnd)) {
-// 		glfwPollEvents();
-		glfwWaitEventsTimeout(1.0 / 60.0);
+		if (active)
+			glfwPollEvents();
+// 			glfwWaitEventsTimeout(1.0 / 60.0);
+		else
+			glfwWaitEvents();
 		paint(wnd);
+		double t1 = glfwGetTime();
+		if (t1 - t0 >= 1.0) {
+			double fps = frames / (t1 - t0);
+			t0 = t1;
+			frames = 0;
+			char title[256];
+			snprintf(title, sizeof(title), "%s @ %.1f FPS", ::title, fps);
+			glfwSetWindowTitle(wnd, title);
+		}
 	}
 	glfwDestroyWindow(wnd);
 #endif
 }
-
