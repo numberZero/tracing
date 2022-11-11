@@ -395,6 +395,8 @@ void resized(GLFWwindow* window, int width, int height) {
 	glNamedFramebufferTexture(fbs[1], GL_COLOR_ATTACHMENT0, mb, 0);
 }
 
+static const char *title = "Space Refraction 2D v2";
+
 void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 	if (key == GLFW_KEY_ESCAPE)
 		glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -405,8 +407,13 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		active = !active;
 		if (active) {
 			t_offset = t0 - t_frozen;
+			glfwSetWindowTitle(window, title);
+
 		} else {
+			char title[256];
+			snprintf(title, sizeof(title), "%s (paused)", ::title);
 			t_frozen = t0 - t_offset;
+			glfwSetWindowTitle(window, title);
 		}
 	}
 }
@@ -415,8 +422,6 @@ void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsi
 	std::printf("%.*s\n", (int)length, message);
 }
 
-static const char *title = "Space Refraction 2D v2";
-
 int main() {
 #if TEST
 	test();
@@ -424,7 +429,6 @@ int main() {
 	glfwInit();
 	glfwWindowHint(GLFW_ALPHA_BITS, 8);
 	glfwWindowHint(GLFW_DEPTH_BITS, 0);
-	glfwWindowHint(GLFW_SAMPLES, 16);
 	glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_TRUE);
 	glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
@@ -445,20 +449,20 @@ int main() {
 	glfwShowWindow(wnd);
 	double t0 = glfwGetTime();
 	while (!glfwWindowShouldClose(wnd)) {
-		if (active)
+		if (active) {
+			paint(wnd);
 			glfwPollEvents();
-// 			glfwWaitEventsTimeout(1.0 / 60.0);
-		else
+			double t1 = glfwGetTime();
+			if (t1 - t0 >= 1.0) {
+				double fps = frames / (t1 - t0);
+				t0 = t1;
+				frames = 0;
+				char title[256];
+				snprintf(title, sizeof(title), "%s @ %.1f FPS", ::title, fps);
+				glfwSetWindowTitle(wnd, title);
+			}
+		} else {
 			glfwWaitEvents();
-		paint(wnd);
-		double t1 = glfwGetTime();
-		if (t1 - t0 >= 1.0) {
-			double fps = frames / (t1 - t0);
-			t0 = t1;
-			frames = 0;
-			char title[256];
-			snprintf(title, sizeof(title), "%s @ %.1f FPS", ::title, fps);
-			glfwSetWindowTitle(wnd, title);
 		}
 	}
 	glfwDestroyWindow(wnd);
