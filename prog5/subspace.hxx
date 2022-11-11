@@ -6,37 +6,46 @@
 
 class Subspace;
 
-struct TrackPoint {
-	const Subspace *space;
-	vec2 pos;
-	vec2 dir;
+/// Переход в другое пространство
+struct Transition {
+	const Subspace *into;	///< Новое пространство
+	vec2 atPos;	///< Координаты точки перехода в исходном пространстве
+	vec2 intoPos;	///< Координаты точки перехода в новом пространстве
+	mat2 jacobi;	///< Матрица преобразования векторов
 };
 
-/// Общая для двух пространств точка и вектор в ней
+/// Точка с направлением
+struct Ray {
+	vec2 pos;	///< Положение точки
+	vec2 dir;	///< Направляющий вектор (обязательно единичный!)
+};
+
+struct TrackPoint: Ray {
+	const Subspace *space;
+};
+
+/// Точка перехода между пространствами
 struct SwitchPoint {
-	TrackPoint from;	///< Запись в координатах исходного пространства
-	TrackPoint to;	///< Запись в координатах следующего пространства
+	TrackPoint from;
+	TrackPoint to;
 };
 
 /// Участок пути, пролегающий по одному пространству
 struct TrackSegment {
-	const Subspace *space;
-	std::vector<vec2> points;
-	vec2 dirBegin;	///< Направление в начале участка (точка `points.front()`)
-	vec2 dirEnd;	///< Направление в конце участка (точка `points.back()`)
-	TrackPoint end;	///< Конец участка (в координатах следующего пространства)
+	std::vector<Ray> points;	///< в координатах исходного пространства
+	TrackPoint to;
 };
 
 class Subspace {
 public:
-	virtual TrackPoint trace(vec2 from, vec2 dir) const = 0;
-	virtual TrackSegment traceEx(vec2 from, vec2 dir) const = 0;
+	virtual SwitchPoint trace(Ray from) const = 0;
+	virtual TrackSegment traceEx(Ray from) const = 0;
 };
 
 /// Граница пространства
 class SubspaceBoundary {
 public:
-	virtual SwitchPoint leave(vec2 from, vec2 dir) const = 0;
+	virtual Transition findBoundary(Ray from) const = 0;
 };
 
 class FlatSubspace: public Subspace {
@@ -44,26 +53,24 @@ public:
 	static constexpr float dt = 1e-1;
 	SubspaceBoundary *boundary;
 
-	TrackPoint trace(vec2 from, vec2 dir) const override {
-		SwitchPoint sp = boundary->leave(from, dir);
-		assert(!sp.from.space || sp.from.space == this);
-		return sp.to;
+	SwitchPoint trace(Ray from) const override {
+		Transition t = boundary->findBoundary(from);
+		return {
+			{{t.atPos, from.dir}, this},
+			{{t.intoPos, t.jacobi * from.dir}, t.into},
+		};
 	}
 
-	TrackSegment traceEx(vec2 from, vec2 dir) const override {
-		SwitchPoint sp = boundary->leave(from, dir);
-		assert(!sp.from.space || sp.from.space == this);
+	TrackSegment traceEx(Ray from) const override {
+		SwitchPoint sp = trace(from);
 		TrackSegment track;
-		track.space = this;
-		track.dirBegin = dir;
-		track.dirEnd = sp.from.dir;
-		track.end = sp.to;
-		float len = distance(from, sp.from.pos);
+		track.to = sp.to;
+		float len = distance(from.pos, sp.from.pos);
 		int n = ceil(len / dt);
 		track.points.resize(n + 1);
 		for (int k = 0; k <= n; k++) {
 			float t = k / float(n);
-			track.points[k] = mix(from, sp.from.pos, t);
+			track.points[k] = {mix(from.pos, sp.from.pos, t), from.dir};
 		}
 		if (!n) {
 			track.points[0] = from;
@@ -76,7 +83,7 @@ public:
 class SwitchMap {
 public:
 	virtual bool contains(vec2 point) const = 0;
-	virtual TrackPoint leave(vec2 pos, vec2 dir) const = 0;
+	virtual Transition leave(Ray at) const = 0;
 };
 
 class RiemannSubspace: public Subspace {
@@ -87,24 +94,21 @@ public:
 	const SwitchMap *map;
 	const RiemannMetric<2> *metric;
 
-	TrackPoint trace(vec2 from, vec2 dir) const override {
-		TrackPoint end = trace(from, dir, [&](vec2 p, vec2 v) {
+	SwitchPoint trace(Ray from) const override {
+		Ray end = trace(from, [&](vec2 p, vec2 v) {
 			return map->contains(p);
 		});
-		return map->leave(end.pos, end.dir);
+		return {{end, this}, leave(end)};
 	}
 
-	TrackSegment traceEx(vec2 from, vec2 dir) const override {
+	TrackSegment traceEx(Ray from) const override {
 		TrackSegment track;
-		TrackPoint end = trace(from, dir, [&](vec2 p, vec2 v) {
-			track.points.push_back(p);
+		Ray end = trace(from, [&](vec2 p, vec2 v) {
+			track.points.push_back({p, v});
 			return map->contains(p);
 		});
 		track.points.shrink_to_fit();
-		track.space = this;
-		track.dirBegin = dir;
-		track.dirEnd = end.dir;
-		track.end = map->leave(end.pos, end.dir);
+		track.to = leave(end);
 		return track;
 	}
 
@@ -115,9 +119,9 @@ public:
 
 private:
 	template <typename F>
-	TrackPoint trace(vec2 from, vec2 dir, F &&pointCb) const {
-		vec2 p = from;
-		vec2 v = dir;
+	Ray trace(Ray from, F &&pointCb) const {
+		vec2 p = from.pos;
+		vec2 v = from.dir;
 		v /=  length(p, v);
 
 		while (pointCb(p, v)) {
@@ -142,6 +146,11 @@ private:
 			}
 		}
 
-		return {this, p, normalize(v)};
+		return {p, normalize(v)};
+	}
+
+	TrackPoint leave(Ray at) const {
+		Transition t = map->leave(at);
+		return {{t.intoPos, t.jacobi * at.dir}, t.into};
 	}
 };

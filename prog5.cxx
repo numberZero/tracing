@@ -12,12 +12,6 @@
 #include <GL/glext.h>
 #include "averager.hxx"
 #include "math.hxx"
-#include "desc/riemann.hxx"
-#include "desc/ray.hxx"
-#include "desc/euclidean.hxx"
-#include "desc/flat.hxx"
-#include "desc/fast.hxx"
-#include "desc/box.hxx"
 #include "prog5/subspace.hxx"
 
 #define TEST 0
@@ -59,26 +53,26 @@ public:
 	Subspace *side;
 	Subspace *channel;
 
-	SwitchPoint leave(vec2 from, vec2 dir) const override {
+	Transition findBoundary(Ray from) const override {
 		const vec2 radius = {params.outer_half_length, params.outer_radius};
-		const vec2 d = -sign(dir) * radius - from;
-		const vec2 dists = d / dir;
-		const vec2 px = from + dists.x * dir;
-		const vec2 py = from + dists.y * dir;
+		const vec2 d = -sign(from.dir) * radius - from.pos;
+		const vec2 dists = d / from.dir;
+		const vec2 px = from.pos + dists.x * from.dir;
+		const vec2 py = from.pos + dists.y * from.dir;
 		float dist = std::numeric_limits<float>::infinity();
 		if (dists.x > 0.0f && abs(px.y) <= radius.y)
 			dist = dists.x - eps;
 		if (dists.y > 0.0f && abs(py.x) <= radius.x)
 			dist = dists.y - eps;
 		if (!std::isfinite(dist))
-			return {{nullptr, from, dir}, {nullptr, from, dir}};
-		vec2 pos = from + dist * dir;
-		const TrackPoint pt1 = {nullptr, pos, dir};
+			return {nullptr, from.pos, from.pos, mat2(1)};
+		const vec2 pos = from.pos + dist * from.dir;
 		if (abs(pos.y) < params.inner_radius) {
-			pos.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			return {pt1, {channel, pos, dir}};
+			vec2 into = pos;
+			into.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
+			return {channel, pos, into, mat2(1)};
 		} else {
-			return {pt1, {side, pos, dir}};
+			return {side, pos, pos, mat2(1)};
 		}
 	}
 };
@@ -89,35 +83,32 @@ public:
 	Subspace *outer;
 	Subspace *side;
 
-	SwitchPoint leave(vec2 from, vec2 dir) const override {
+	Transition findBoundary(Ray from) const override {
 		const vec2 radius = {params.inner_half_length, params.inner_radius};
-		const vec2 d = sign(dir) * radius - from;
-		const vec2 dist = d / dir;
+		const vec2 d = sign(from.dir) * radius - from.pos;
+		const vec2 dist = d / from.dir;
 		const float dist_outer = dist.x + eps;
 		const float dist_side = dist.y;// + eps;
 
-		vec2 pos = from + min(dist_outer, dist_side) * dir;
-		const TrackPoint pt1 = {nullptr, pos, dir};
+		const vec2 pos = from.pos + min(dist_outer, dist_side) * from.dir;
+		vec2 into = pos;
 
 		if (dist_outer <= dist_side) {
-			debugf("channel->outer (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
-			pos.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
-			return {pt1, {outer, pos, dir}};
+			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
+			return {outer, pos, into, mat2(1)};
 		} else {
 			Coefs cs(params);
-			debugf("channel->side (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
+			float m = 1.0f;
 			if (abs(pos.x) < cs.x1) {
-				pos.x *= cs.y1 / cs.x1;
-				dir.x *= cs.y1 / cs.x1;
+				into.x *= cs.y1 / cs.x1;
+				m = cs.y1 / cs.x1;
 			} else if (abs(pos.x) < cs.x2) {
-				dir.x *= 2 * cs.w * (abs(pos.x) - cs.x0);
-				pos.x = copysign(cs.y0 + cs.w * sqr(abs(pos.x) - cs.x0), pos.x);
+				m = 2 * cs.w * (abs(pos.x) - cs.x0);
+				into.x = copysign(cs.y0 + cs.w * sqr(abs(pos.x) - cs.x0), pos.x);
 			} else {
-				pos.x += copysign(cs.y2 - cs.x2, pos.x);
+				into.x += copysign(cs.y2 - cs.x2, pos.x);
 			}
-			debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
-			return {pt1, {side, pos, normalize(dir)}};
+			return {side, pos, into, diagonal(m, 1)};
 		}
 	}
 };
@@ -159,24 +150,27 @@ public:
 		return abs(point.x) <= params.outer_half_length + eps && abs(point.y) <= params.outer_radius + eps && abs(point.y) >= params.inner_radius - eps;
 	}
 
-	TrackPoint leave(vec2 pos, vec2 dir) const override {
+	Transition leave(const Ray at) const override {
+		vec2 pos = at.pos;
+		vec2 dir = at.dir;
 		Coefs cs(params);
 		if (abs(pos.y) >= params.inner_radius)
-			return {outer, pos, dir};
+			return {outer, pos, pos, mat2(1)};
 		if (abs(pos.x) >= params.outer_half_length && sign(dir.x) == sign(pos.x))
-			return {outer, pos, dir};
+			return {outer, pos, pos, mat2(1)};
 		debugf("side->channel (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
+		float m = 1.0f;
 		if (abs(pos.x) < cs.y1) {
 			pos.x *= cs.x1 / cs.y1;
-			dir.x *= cs.x1 / cs.y1;
+			m = cs.x1 / cs.y1;
 		} else if (abs(pos.x) < cs.y2) {
 			pos.x = copysign(sqrt((abs(pos.x) - cs.y0) / cs.w) - cs.x0, pos.x);
-			dir.x /= 2 * cs.w * (abs(pos.x) - cs.x0);
+			m = 1 / (2 * cs.w * (abs(pos.x) - cs.x0));
 		} else {
 			pos.x -= copysign(cs.y2 - cs.x2, pos.x);
 		}
 		debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
-		return {channel, pos, normalize(dir)};
+		return {channel, at.pos, pos, diagonal(m, 1.0f)};
 	}
 };
 
@@ -264,14 +258,14 @@ void render() {
 		for (;;) {
 			auto visual = visuals[pt.space];
 			glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
-			auto track = pt.space->traceEx(pt.pos, pt.dir);
+			auto track = pt.space->traceEx(pt);
 			assert(!track.points.empty());
 			for (auto tp: track.points) {
-				p = visual->where(tp);
+				p = visual->where(tp.pos);
 				glVertex2fv(value_ptr(p));
 			}
-			if (track.end.space) {
-				pt = track.end;
+			if (track.to.space) {
+				pt = track.to;
 			} else {
 				break;
 			}
