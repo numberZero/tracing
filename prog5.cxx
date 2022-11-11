@@ -237,7 +237,7 @@ void render() {
 	Params params;
 	Coefs cs(params);
 	FlatSubspace a_thing;
-	ThingyFlatSubspace outer, channel;
+	FlatSubspace outer, channel;
 	RiemannSubspace side;
 	ChannelSideMetric side_metric;
 	SideBoundary sbnd;
@@ -251,8 +251,12 @@ void render() {
 	cbnd.side = &side;
 	sbnd.outer = &outer;
 	sbnd.channel = &channel;
-	outer.boundary = &ibnd;
-	channel.boundary = &cbnd;
+	ThingyBoundary outer_boundary;
+	outer_boundary.base = &ibnd;
+	outer.boundary = &outer_boundary;
+	ThingyBoundary channel_boundary;
+	channel_boundary.base = &cbnd;
+	channel.boundary = &channel_boundary;
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
@@ -261,8 +265,15 @@ void render() {
 		{&side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	outer.things.push_back({&a_thing, vec2(7.0f, 5.0f) * vec2(cos(1.2 - .7 * t0), sin(1.2 - .7 * t0)), .5});
-	channel.things.push_back({&a_thing, vec2(2.0f, 1.0f) * vec2(cos(2.7 + 1.3 * t0), cos(2.3 + 0.9 * t0)), .5});
+	std::unordered_map<SubspaceBoundary const *, shared_ptr<SpaceVisual>> visuals2 = {
+		{nullptr, visuals[nullptr]},
+		{outer.boundary, visuals[&outer]},
+		{channel.boundary, visuals[&channel]},
+	};
+
+	outer_boundary.things.push_back({&a_thing, vec2(7.0f, 5.0f) * vec2(cos(1.2 - .7 * t0), sin(1.2 - .7 * t0)), .5});
+	channel_boundary.things.push_back({&a_thing, vec2(2.0f, 1.0f) * vec2(cos(2.7 + 1.3 * t0), cos(2.3 + 0.9 * t0)), .5});
+	channel_boundary.things.push_back({&a_thing, vec2(2.0f, 1.0f) * vec2(cos(2.3 + 0.5 * t0), cos(1.9 + 1.7 * t0)), .5});
 
 	float theta = .3 * t0;
 	int N = 120;
@@ -308,9 +319,9 @@ void render() {
 	}
 
 	int M = 30;
-	for (auto const &space: {&outer, &channel}) {
-		auto &&visual = visuals.at(space);
-		for (auto &&info: space->things) {
+	for (auto const &bnd: {&outer_boundary, &channel_boundary}) {
+		auto &&visual = visuals2.at(bnd);
+		for (auto &&info: bnd->things) {
 			glColor4f(.8, .8, .8, .75);
 			glBegin(GL_LINE_LOOP);
 			for (int k = -M; k < M; k++) {
