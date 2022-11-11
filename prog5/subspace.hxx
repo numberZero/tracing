@@ -18,6 +18,14 @@ struct Transition {
 struct Ray {
 	vec2 pos;	///< Положение точки
 	vec2 dir;	///< Направляющий вектор (обязательно единичный!)
+
+	Ray() = default;
+	Ray(Ray const &) = default;
+	Ray(vec2 pos, vec2 dir)
+		: pos(pos)
+		, dir(normalize(dir))
+	{
+	}
 };
 
 struct TrackPoint: Ray {
@@ -57,11 +65,11 @@ public:
 		Transition t = boundary->findBoundary(from);
 		return {
 			{{t.atPos, from.dir}, this},
-			{{t.intoPos, t.jacobi * from.dir}, t.into},
+			{{t.intoPos, normalize(t.jacobi * from.dir)}, t.into},
 		};
 	}
 
-	TrackSegment traceEx(Ray from) const override {
+	TrackSegment traceEx(Ray from) const final override {
 		SwitchPoint sp = trace(from);
 		TrackSegment track;
 		track.to = sp.to;
@@ -151,6 +159,6 @@ private:
 
 	TrackPoint leave(Ray at) const {
 		Transition t = map->leave(at);
-		return {{t.intoPos, t.jacobi * at.dir}, t.into};
+		return {{t.intoPos, normalize(t.jacobi * at.dir)}, t.into};
 	}
 };

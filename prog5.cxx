@@ -13,6 +13,7 @@
 #include "averager.hxx"
 #include "math.hxx"
 #include "prog5/subspace.hxx"
+#include "prog5/thing.hxx"
 
 #define TEST 0
 // #define debugf(...) printf(__VA_ARGS__)
@@ -188,6 +189,10 @@ public:
 	virtual vec2 where(vec2 pos) const {
 		return pos;
 	}
+
+	virtual mat2 jacobi(vec2 pos) const {
+		return mat2(1.0f);
+	}
 };
 
 class ChannelVisual: public SpaceVisual {
@@ -207,6 +212,17 @@ public:
 		}
 		return pos;
 	}
+
+	mat2 jacobi(vec2 pos) const override {
+		Coefs cs(params);
+		if (abs(pos.x) < cs.x1) {
+			return diagonal(cs.y1 / cs.x1, 1.0f);
+		} else if (abs(pos.x) < cs.x2) {
+			return diagonal(2 * cs.w * (abs(pos.x) - cs.x0), 1.0f);
+		} else {
+			return mat2(1.0f);
+		}
+	}
 };
 
 using std::shared_ptr, std::make_shared;
@@ -220,7 +236,8 @@ void render() {
 
 	Params params;
 	Coefs cs(params);
-	FlatSubspace outer, channel;
+	FlatSubspace a_thing;
+	ThingyFlatSubspace outer, channel;
 	RiemannSubspace side;
 	ChannelSideMetric side_metric;
 	SideBoundary sbnd;
@@ -244,6 +261,9 @@ void render() {
 		{&side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
+	outer.things.push_back({&a_thing, vec2(7.0f, 5.0f) * vec2(cos(1.2 - .7 * t0), sin(1.2 - .7 * t0)), .5});
+	channel.things.push_back({&a_thing, vec2(2.0f, 1.0f) * vec2(cos(2.7 + 1.3 * t0), cos(2.3 + 0.9 * t0)), .5});
+
 	float theta = .3 * t0;
 	int N = 120;
 	for (int k = -N; k < N; k++) {
@@ -253,7 +273,7 @@ void render() {
 		pt.dir = vec2(cos(phi), sin(phi));
 		pt.space = &outer;
 		int n = 0;
-		vec2 p;
+		vec2 p, v;
 		glBegin(GL_LINE_STRIP);
 		for (;;) {
 			auto visual = visuals[pt.space];
@@ -262,20 +282,43 @@ void render() {
 			assert(!track.points.empty());
 			for (auto tp: track.points) {
 				p = visual->where(tp.pos);
+				v = visual->jacobi(tp.pos) * pt.dir;
 				glVertex2fv(value_ptr(p));
+			}
+			if (track.to.space == &a_thing) {
+				glColor3f(1, 1, 0);
+				glVertex2fv(value_ptr(p));
+				glVertex2fv(value_ptr(p + .5f * v));
+				break;
 			}
 			if (track.to.space) {
 				pt = track.to;
 			} else {
+				glVertex2fv(value_ptr(p + 50.f * v));
 				break;
 			}
 			if (n++ > 10) {
 				glColor3f(1, 0, 0);
+				glVertex2fv(value_ptr(p));
+				glVertex2fv(value_ptr(p + 1.f * v));
 				break;
 			}
 		}
-		glVertex2fv(value_ptr(p + 50.f * pt.dir));
 		glEnd();
+	}
+
+	int M = 30;
+	for (auto const &space: {&outer, &channel}) {
+		auto &&visual = visuals.at(space);
+		for (auto &&info: space->things) {
+			glColor4f(.8, .8, .8, .75);
+			glBegin(GL_LINE_LOOP);
+			for (int k = -M; k < M; k++) {
+				float phi = (.5 + k) * (M_PI / M);
+				glVertex2fv(value_ptr(visual->where(info.pos + info.radius * vec2(cos(phi), sin(phi)))));
+			}
+			glEnd();
+		}
 	}
 
 	glBegin(GL_LINE_LOOP);
