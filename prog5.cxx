@@ -445,6 +445,21 @@ void resized(GLFWwindow* window, int width, int height) {
 
 static const char *title = "Space Refraction 2D v2";
 
+void toggle_fullscreen(GLFWwindow *window) {
+	static bool fullscreen = false;
+	static int x, y, w, h;
+	fullscreen = !fullscreen;
+	if (fullscreen) {
+		glfwGetWindowPos( window, &x, &y);
+		glfwGetWindowSize( window, &w, &h);
+		GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+		const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+		glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+	} else {
+		glfwSetWindowMonitor(window, nullptr, x, y, w, h, GLFW_DONT_CARE);
+	}
+}
+
 void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 	if (key == GLFW_KEY_ESCAPE)
 		glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -464,6 +479,8 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 			glfwSetWindowTitle(window, title);
 		}
 	}
+	if (key == GLFW_KEY_ENTER && mods == GLFW_MOD_ALT)
+		toggle_fullscreen(window);
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
