@@ -515,8 +515,8 @@ int main() {
 	double t0 = glfwGetTime();
 	while (!glfwWindowShouldClose(wnd)) {
 		if (active) {
-			paint(wnd);
 			glfwPollEvents();
+			paint(wnd);
 			double t1 = glfwGetTime();
 			if (t1 - t0 >= 1.0) {
 				double fps = frames / (t1 - t0);
@@ -528,6 +528,8 @@ int main() {
 			}
 		} else {
 			glfwWaitEvents();
+			t0 = glfwGetTime();
+			frames = 0;
 		}
 	}
 	glfwDestroyWindow(wnd);
