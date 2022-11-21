@@ -3,8 +3,10 @@
 #include <limits>
 #include "prog5/subspace.hxx"
 
+class ThingySubspace;
+
 struct Location {
-	FlatSubspace const *space;
+	ThingySubspace const *space;
 	vec2 pos; ///< Положение (в координатах пространства @p space)
 	mat2 rot; ///< Матрица поворота (ортогональная!)
 };
@@ -21,20 +23,30 @@ public:
 };
 
 struct ThingInfo {
-	FlatSubspace const *thing;
+	Thing const *thing;
 	vec2 pos;
 	float radius;
 };
 
-class ThingyBoundary: public SubspaceBoundaryEx {
+struct ThingTraceResult {
+	Thing const *thing = nullptr;
+	Ray incident;
+	float distance;
+};
+
+class ThingySubspace: public Subspace {
 public:
-	SubspaceBoundaryEx *base;
+	SubspaceBoundaryEx *boundary;
 	std::vector<ThingInfo> things;
 
-	Transition findBoundary(Ray ray) const override {
-		Transition t = base->findBoundary(ray);
-		float dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
+	SwitchPoint trace(Ray ray) const final override {
+		return thingless().trace(ray);
+	}
 
+	ThingTraceResult traceToThing(Ray ray) const {
+		ThingTraceResult result;
+		Transition t = boundary->findBoundary(ray);
+		float dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
 		for (auto &&info: things) {
 			const vec2 rel = info.pos - ray.pos;
 			const float t_center = dot(rel, ray.dir);
@@ -47,27 +59,25 @@ public:
 			if (t_far >= 0.0f && t_near < dist) { // Да, именно так. Если дальняя точка впереди, пишем расстояние до ближней, даже если она позади.
 				dist = t_near;
 				const vec2 pos = ray.pos + dist * ray.dir;
-				t = {info.thing, pos, pos, mat2(1.0f)};
+				result = {
+					.thing = info.thing,
+					.incident = {pos, ray.dir},
+					.distance = dist,
+				};
 			}
 		}
-
-		return t;
+		return result;
 	}
 
-	std::vector<Transition> findOverlaps(vec2 at, float max_distance) const override {
-		return base->findOverlaps(at, max_distance);
-	}
-
-	bool contains(vec2 point) const override {
-		return base->contains(point);
-	}
-
-	Transition leave(Ray at) const override {
-		return base->leave(at);
+private:
+	FlatSubspace thingless() const {
+		FlatSubspace result;
+		result.boundary = boundary;
+		return result;
 	}
 };
 
 struct ThingLocation {
-	ThingyBoundary *space;
+	ThingySubspace *space;
 	vec2 pos;
 };

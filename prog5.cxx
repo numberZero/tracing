@@ -314,18 +314,15 @@ bool active = true;
 
 class MyUniverse {
 public:
-
 	Params params;
 	Coefs cs{params};
-	FlatSubspace a_thing;
-	FlatSubspace outer, channel;
+	Thing a_thing;
+	ThingySubspace outer, channel;
 	RiemannSubspace side;
 	ChannelSideMetric side_metric;
 	SideBoundary sbnd;
 	InwardsBoundary ibnd;
 	ChannelBoundary cbnd;
-	ThingyBoundary outer_boundary;
-	ThingyBoundary channel_boundary;
 
 public:
 	MyUniverse() {
@@ -337,10 +334,8 @@ public:
 		cbnd.side = &side;
 		sbnd.outer = &outer;
 		sbnd.channel = &channel;
-		outer_boundary.base = &ibnd;
-		outer.boundary = &outer_boundary;
-		channel_boundary.base = &cbnd;
-		channel.boundary = &channel_boundary;
+		outer.boundary = &ibnd;
+		channel.boundary = &cbnd;
 	}
 };
 
@@ -349,8 +344,8 @@ float off = .5f * uni.params.outer_half_length;
 float A = uni.params.inner_half_length + off;
 float omega = 1.0f;
 ThingLocation locs[] = {
-	{&uni.outer_boundary, {-(uni.params.outer_half_length + off), 0.0f}},
-	{&uni.outer_boundary, {-A, uni.params.outer_radius + off}},
+	{&uni.outer, {-(uni.params.outer_half_length + off), 0.0f}},
+	{&uni.outer, {-A, uni.params.outer_radius + off}},
 };
 
 void render() {
@@ -366,32 +361,24 @@ void render() {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	std::unordered_map<SubspaceBoundary const *, shared_ptr<SpaceVisual>> visuals2 = {
-		{nullptr, visuals[nullptr]},
-		{uni.outer.boundary, visuals[&uni.outer]},
-		{uni.channel.boundary, visuals[&uni.channel]},
-	};
-
+	auto a_thing = reinterpret_cast<Thing *>(&uni.a_thing);
 	const float thing_radius = 0.5f;
-	uni.outer_boundary.things.clear();
-	uni.channel_boundary.things.clear();
+	uni.outer.things.clear();
+	uni.channel.things.clear();
 	for (auto &loc: locs) {
-		loc.space->things.push_back({&uni.a_thing, loc.pos, thing_radius});
-		for (auto over: loc.space->findOverlaps(loc.pos, thing_radius)) {
-			if (auto flat = dynamic_cast<FlatSubspace const *>(over.into)) {
-				auto bnd = dynamic_cast<ThingyBoundary *>(flat->boundary);
-				bnd->things.push_back({&uni.a_thing, over.intoPos, .5});
+		loc.space->things.push_back({a_thing, loc.pos, thing_radius});
+		for (auto over: loc.space->boundary->findOverlaps(loc.pos, thing_radius)) {
+			if (auto flat = dynamic_cast<ThingySubspace *>(over.into)) {
+				flat->things.push_back({a_thing, over.intoPos, .5});
 			} else {
 			}
 		}
 		vec2 v = vec2(A * omega * sin(omega * t), 0.0f);
 		loc.pos += dt * v;
-		if (!loc.space->contains(loc.pos)) {
-			auto next = loc.space->leave({loc.pos, v});
-			if (auto flat = dynamic_cast<FlatSubspace const *>(next.into)) {
-				auto bnd = dynamic_cast<ThingyBoundary *>(flat->boundary);
-				assert(bnd);
-				loc.space = bnd;
+		if (!loc.space->boundary->contains(loc.pos)) {
+			auto next = loc.space->boundary->leave({loc.pos, v});
+			if (auto flat = dynamic_cast<ThingySubspace *>(next.into)) {
+				loc.space = const_cast<ThingySubspace *>(flat); // все ThingySubspace неконстантны
 				loc.pos = next.intoPos;
 			} else {
 				throw "Oops! A thing is destroyed by the space curvature";
@@ -417,14 +404,19 @@ void render() {
 			glVertex2fv(value_ptr(visual->where(pt.pos)));
 			p = visual->where(track.from.pos);
 			v = visual->jacobi(track.from.pos) * pt.dir;
-			if (track.to.space)
-				glVertex2fv(value_ptr(p));
-			if (track.to.space == &uni.a_thing) {
-				glColor3f(1, 1, 0);
-				glVertex2fv(value_ptr(p));
-				glVertex2fv(value_ptr(p + .5f * v));
-				break;
+			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
+				if (auto t = flat->traceToThing(pt); t.thing) {
+					// TODO Если track.to.space — ThingySubspace, там может найтись Thing ещё ближе; надо проверять.
+					p = visual->where(t.incident.pos);
+					v = visual->jacobi(t.incident.pos) * pt.dir;
+					glVertex2fv(value_ptr(p));
+					glColor3f(1, 1, 0);
+					glVertex2fv(value_ptr(p));
+					glVertex2fv(value_ptr(p + .5f * v));
+					break;
+				}
 			}
+			glVertex2fv(value_ptr(p));
 			if (track.to.space) {
 				pt = track.to;
 			} else {
@@ -453,8 +445,8 @@ void render() {
 	};
 	int k = 0;
 	int M = 30;
-	for (auto const &bnd: {&uni.outer_boundary, &uni.channel_boundary}) {
-		auto &&visual = visuals2.at(bnd);
+	for (auto const &bnd: {&uni.outer, &uni.channel}) {
+		auto &&visual = visuals.at(bnd);
 		for (auto &&info: bnd->things) {
 			glColor3fv(value_ptr(visual->color));
 // 			glColor4fv(value_ptr(colors[k++%8]));
