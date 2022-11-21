@@ -361,15 +361,17 @@ void render() {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	auto a_thing = reinterpret_cast<Thing *>(&uni.a_thing);
-	const float thing_radius = 0.5f;
+	auto a_thing = &uni.a_thing;
+	const float envelope_radius = 0.5f;
+	const float thing_radius = 0.25f;
+	a_thing->radius = thing_radius;
 	uni.outer.things.clear();
 	uni.channel.things.clear();
 	for (auto &loc: locs) {
-		loc.space->things.push_back({a_thing, loc.pos, thing_radius});
-		for (auto over: loc.space->boundary->findOverlaps(loc.pos, thing_radius)) {
+		loc.space->things.push_back({a_thing, loc.pos, envelope_radius});
+		for (auto over: loc.space->boundary->findOverlaps(loc.pos, envelope_radius)) {
 			if (auto flat = dynamic_cast<ThingySubspace *>(over.into)) {
-				flat->things.push_back({a_thing, over.intoPos, .5});
+				flat->things.push_back({a_thing, over.intoPos, envelope_radius});
 			} else {
 			}
 		}
@@ -452,12 +454,17 @@ void render() {
 		auto &&visual = visuals.at(bnd);
 		for (auto &&info: bnd->things) {
 			glColor3fv(value_ptr(visual->color));
-// 			glColor4fv(value_ptr(colors[k++%8]));
-// 			glColor4f(.8, .8, .8, .75);
 			glBegin(GL_LINE_LOOP);
 			for (int k = -M; k < M; k++) {
 				float phi = (.5 + k) * (M_PI / M);
 				glVertex2fv(value_ptr(visual->where(info.pos + info.radius * vec2(cos(phi), sin(phi)))));
+			}
+			glEnd();
+			glColor4f(.8, .8, .8, .75);
+			glBegin(GL_LINE_LOOP);
+			for (int k = -M; k < M; k++) {
+				float phi = (.5 + k) * (M_PI / M);
+				glVertex2fv(value_ptr(visual->where(info.pos + info.thing->radius * vec2(cos(phi), sin(phi)))));
 			}
 			glEnd();
 		}
@@ -498,7 +505,6 @@ void paint(GLFWwindow* window) {
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glLineWidth(2.3f);
 	glLineWidth(winsize * 0.0085);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);

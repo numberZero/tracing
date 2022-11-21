@@ -43,8 +43,8 @@ public:
 		return thingless().trace(ray);
 	}
 
-	ThingTraceResult traceToThing(Ray ray) const {
-		ThingTraceResult result;
+	std::vector<ThingInfo> findThingsOnRay(Ray ray) const {
+		std::vector<ThingInfo> result;
 		Transition t = boundary->findBoundary(ray);
 		float dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
 		for (auto &&info: things) {
@@ -54,6 +54,27 @@ public:
 			if (d2 > sqr(info.radius))
 				continue;
 			const float t_diff = std::sqrt(sqr(info.radius) - d2);
+			const float t_near = t_center - t_diff;
+			const float t_far = t_center + t_diff;
+			if (t_far >= 0.0f && t_near < dist) {
+				result.push_back(info);
+			}
+		}
+		return result;
+	}
+
+	ThingTraceResult traceToThing(Ray ray) const {
+		ThingTraceResult result;
+		Transition t = boundary->findBoundary(ray);
+		float dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
+		for (auto &&info: findThingsOnRay(ray)) {
+			const vec2 rel = info.pos - ray.pos;
+			const float t_center = dot(rel, ray.dir);
+			const float d2 = dot(rel, rel) - sqr(t_center);
+			const float r = info.thing->radius;
+			if (d2 > sqr(r))
+				continue;
+			const float t_diff = std::sqrt(sqr(r) - d2);
 			const float t_near = t_center - t_diff;
 			const float t_far = t_center + t_diff;
 			if (t_far >= 0.0f && t_near < dist) { // Да, именно так. Если дальняя точка впереди, пишем расстояние до ближней, даже если она позади.
