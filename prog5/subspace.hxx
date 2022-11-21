@@ -14,6 +14,10 @@ struct Transition {
 	mat2 jacobi;	///< Матрица преобразования векторов
 };
 
+struct BoundaryPoint: Transition {
+	float distance;
+};
+
 /// Точка с направлением
 struct Ray {
 	vec2 pos;	///< Положение точки
@@ -32,21 +36,21 @@ struct TrackPoint: Ray {
 	const Subspace *space;
 };
 
-/// Точка перехода между пространствами
-struct SwitchPoint {
+struct TraceResult {
 	TrackPoint from;
 	TrackPoint to;
+	float distance;
 };
 
 class Subspace {
 public:
-	virtual SwitchPoint trace(Ray from) const = 0;
+	virtual TraceResult trace(Ray from) const = 0;
 };
 
 /// Граница пространства
 class SubspaceBoundary {
 public:
-	virtual Transition findBoundary(Ray from) const = 0;
+	virtual BoundaryPoint findBoundary(Ray from) const = 0;
 };
 
 class FlatSubspace: public Subspace {
@@ -54,11 +58,12 @@ public:
 	static constexpr float dt = 1e-1;
 	SubspaceBoundary *boundary;
 
-	SwitchPoint trace(Ray from) const override {
-		Transition t = boundary->findBoundary(from);
+	TraceResult trace(Ray from) const override {
+		auto t = boundary->findBoundary(from);
 		return {
 			{{t.atPos, from.dir}, this},
 			{{t.intoPos, normalize(t.jacobi * from.dir)}, t.into},
+			t.distance,
 		};
 	}
 };
@@ -78,26 +83,17 @@ public:
 	const SwitchMap *map;
 	const RiemannMetric<2> *metric;
 
-	SwitchPoint trace(Ray from) const override {
-		Ray end = trace(from, [&](vec2 p, vec2 v) {
-			return map->contains(p);
-		});
-		return {{end, this}, leave(end)};
-	}
-
 	float length(vec2 pos, vec2 vec) const {
 		mat2 g = metric->metric(pos);
 		return sqrt(dot(vec, g * vec));
 	}
 
-private:
-	template <typename F>
-	Ray trace(Ray from, F &&pointCb) const {
+	TraceResult trace(Ray from) const override {
+		float t = 0.0f;
 		vec2 p = from.pos;
 		vec2 v = from.dir;
 		v /=  length(p, v);
-
-		while (pointCb(p, v)) {
+		while (map->contains(p)) {
 			auto a = covar(metric->krist(p), v);
 			if (dt * ::length(a) > eta) {
 				int substeps = ceil(dt * ::length(a) / eta);
@@ -117,9 +113,10 @@ private:
 				v += dt * a;
 				p += dt * v;
 			}
+			t += dt;
 		}
-
-		return {p, normalize(v)};
+		Ray end = {p, normalize(v)};
+		return {{end, this}, leave(end), t};
 	}
 
 	TrackPoint leave(Ray at) const {

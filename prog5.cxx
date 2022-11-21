@@ -54,7 +54,7 @@ public:
 	Subspace *side;
 	Subspace *channel;
 
-	Transition findBoundary(Ray from) const override {
+	BoundaryPoint findBoundary(Ray from) const override {
 		const vec2 radius = {params.outer_half_length, params.outer_radius};
 		const vec2 d = -sign(from.dir) * radius - from.pos;
 		const vec2 dists = d / from.dir;
@@ -66,9 +66,9 @@ public:
 		if (dists.y > 0.0f && abs(py.x) <= radius.x)
 			dist = dists.y - eps;
 		if (!std::isfinite(dist))
-			return {nullptr, from.pos, from.pos, mat2(1)};
+			return {{nullptr, from.pos, from.pos, mat2(1)}, dist};
 		const vec2 pos = from.pos + dist * from.dir;
-		return leave({pos, from.dir});
+		return {leave({pos, from.dir}), 0.0};
 	}
 
 	std::vector<Transition> findOverlaps(vec2 pos, float max_distance) const override {
@@ -111,7 +111,7 @@ public:
 	Subspace *outer;
 	Subspace *side;
 
-	Transition findBoundary(Ray from) const override {
+	BoundaryPoint findBoundary(Ray from) const override {
 		const vec2 radius = {params.inner_half_length, params.inner_radius};
 		const vec2 d = sign(from.dir) * radius - from.pos;
 		const vec2 dist = d / from.dir;
@@ -123,7 +123,7 @@ public:
 
 		if (dist_outer <= dist_side) {
 			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			return {outer, pos, into, mat2(1)};
+			return {{outer, pos, into, mat2(1)}, dist_outer};
 		} else {
 			Coefs cs(params);
 			float m = 1.0f;
@@ -136,7 +136,7 @@ public:
 			} else {
 				into.x += copysign(cs.y2 - cs.x2, pos.x);
 			}
-			return {side, pos, into, diagonal(m, 1)};
+			return {{side, pos, into, diagonal(m, 1)}, dist_side};
 		}
 	}
 

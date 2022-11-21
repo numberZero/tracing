@@ -39,7 +39,7 @@ public:
 	SubspaceBoundaryEx *boundary;
 	std::vector<ThingInfo> things;
 
-	SwitchPoint trace(Ray ray) const final override {
+	TraceResult trace(Ray ray) const final override {
 		return thingless().trace(ray);
 	}
 
