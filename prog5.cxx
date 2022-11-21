@@ -400,21 +400,24 @@ void render() {
 		for (;;) {
 			auto visual = visuals[pt.space];
 			auto traced = pt.space->trace(pt);
-			glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
-			glVertex2fv(value_ptr(visual->where(pt.pos)));
-			p = visual->where(traced.end.pos);
-			v = visual->jacobi(traced.end.pos) * pt.dir;
+			vec2 endpoint = traced.end.pos;
+			bool hit_a_thing = false;
 			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
 				if (auto t = flat->traceToThing(pt); t.thing) {
-					// TODO Если track.to.space — ThingySubspace, там может найтись Thing ещё ближе; надо проверять.
-					p = visual->where(t.incident.pos);
-					v = visual->jacobi(t.incident.pos) * pt.dir;
-					glVertex2fv(value_ptr(p));
-					glColor3f(1, 1, 0);
-					glVertex2fv(value_ptr(p));
-					glVertex2fv(value_ptr(p + .5f * v));
-					break;
+					hit_a_thing = true;
+					endpoint = t.incident.pos;
 				}
+			}
+			p = visual->where(endpoint);
+			v = visual->jacobi(endpoint) * pt.dir;
+			glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
+			glVertex2fv(value_ptr(visual->where(pt.pos)));
+			glVertex2fv(value_ptr(p));
+			if (hit_a_thing) {
+				glColor3f(1, 1, 0);
+				glVertex2fv(value_ptr(p));
+				glVertex2fv(value_ptr(p + .5f * v));
+				break;
 			}
 			glVertex2fv(value_ptr(p));
 			if (traced.to.space) {
