@@ -402,8 +402,8 @@ void render() {
 			auto traced = pt.space->trace(pt);
 			glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
 			glVertex2fv(value_ptr(visual->where(pt.pos)));
-			p = visual->where(traced.pt.pos);
-			v = visual->jacobi(traced.pt.pos) * pt.dir;
+			p = visual->where(traced.end.pos);
+			v = visual->jacobi(traced.end.pos) * pt.dir;
 			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
 				if (auto t = flat->traceToThing(pt); t.thing) {
 					// TODO Если track.to.space — ThingySubspace, там может найтись Thing ещё ближе; надо проверять.

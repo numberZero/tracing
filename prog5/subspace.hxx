@@ -37,7 +37,7 @@ struct TrackPoint: Ray {
 };
 
 struct TraceResult {
-	TrackPoint pt;
+	Ray end;
 	TrackPoint to;
 	float distance;
 };
@@ -61,7 +61,7 @@ public:
 	TraceResult trace(Ray from) const override {
 		auto t = boundary->findBoundary(from);
 		return {
-			{{t.atPos, from.dir}, this},
+			{t.atPos, from.dir},
 			{{t.intoPos, normalize(t.jacobi * from.dir)}, t.into},
 			t.distance,
 		};
@@ -116,7 +116,7 @@ public:
 			t += dt;
 		}
 		Ray end = {p, normalize(v)};
-		return {{end, this}, leave(end), t};
+		return {end, leave(end), t};
 	}
 
 	TrackPoint leave(Ray at) const {
