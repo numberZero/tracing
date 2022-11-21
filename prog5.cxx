@@ -412,14 +412,13 @@ void render() {
 		glBegin(GL_LINE_STRIP);
 		for (;;) {
 			auto visual = visuals[pt.space];
+			auto track = pt.space->trace(pt);
 			glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
-			auto track = pt.space->traceEx(pt);
-			assert(!track.points.empty());
-			for (auto tp: track.points) {
-				p = visual->where(tp.pos);
-				v = visual->jacobi(tp.pos) * pt.dir;
+			glVertex2fv(value_ptr(visual->where(pt.pos)));
+			p = visual->where(track.from.pos);
+			v = visual->jacobi(track.from.pos) * pt.dir;
+			if (track.to.space)
 				glVertex2fv(value_ptr(p));
-			}
 			if (track.to.space == &uni.a_thing) {
 				glColor3f(1, 1, 0);
 				glVertex2fv(value_ptr(p));

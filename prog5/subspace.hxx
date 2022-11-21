@@ -38,16 +38,9 @@ struct SwitchPoint {
 	TrackPoint to;
 };
 
-/// Участок пути, пролегающий по одному пространству
-struct TrackSegment {
-	std::vector<Ray> points;	///< в координатах исходного пространства
-	TrackPoint to;
-};
-
 class Subspace {
 public:
 	virtual SwitchPoint trace(Ray from) const = 0;
-	virtual TrackSegment traceEx(Ray from) const = 0;
 };
 
 /// Граница пространства
@@ -67,23 +60,6 @@ public:
 			{{t.atPos, from.dir}, this},
 			{{t.intoPos, normalize(t.jacobi * from.dir)}, t.into},
 		};
-	}
-
-	TrackSegment traceEx(Ray from) const final override {
-		SwitchPoint sp = trace(from);
-		TrackSegment track;
-		track.to = sp.to;
-		float len = distance(from.pos, sp.from.pos);
-		int n = ceil(len / dt);
-		track.points.resize(n + 1);
-		for (int k = 0; k <= n; k++) {
-			float t = k / float(n);
-			track.points[k] = {mix(from.pos, sp.from.pos, t), from.dir};
-		}
-		if (!n) {
-			track.points[0] = from;
-		}
-		return track;
 	}
 };
 
@@ -107,17 +83,6 @@ public:
 			return map->contains(p);
 		});
 		return {{end, this}, leave(end)};
-	}
-
-	TrackSegment traceEx(Ray from) const override {
-		TrackSegment track;
-		Ray end = trace(from, [&](vec2 p, vec2 v) {
-			track.points.push_back({p, v});
-			return map->contains(p);
-		});
-		track.points.shrink_to_fit();
-		track.to = leave(end);
-		return track;
 	}
 
 	float length(vec2 pos, vec2 vec) const {
