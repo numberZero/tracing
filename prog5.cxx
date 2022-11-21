@@ -310,6 +310,16 @@ class Sphere: public Thing {
 public:
 	float radius;
 
+	Sphere() = default;
+	Sphere(float _radius, ThingySubspace const *space, vec2 pos) {
+		radius = _radius;
+		loc = {
+			space,
+			pos,
+			mat2(1.0f),
+		};
+	}
+
 	float hit(Ray ray) const override {
 		const vec2 rel = -ray.pos;
 		const float t_center = -dot(ray.pos, ray.dir);
