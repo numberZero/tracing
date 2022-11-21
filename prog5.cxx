@@ -346,7 +346,6 @@ class MyUniverse {
 public:
 	Params params;
 	Coefs cs{params};
-	Sphere a_thing;
 	ThingySubspace outer, channel;
 	RiemannSubspace side;
 	ChannelSideMetric side_metric;
@@ -370,12 +369,13 @@ public:
 };
 
 MyUniverse uni;
-float off = .5f * uni.params.outer_half_length;
-float A = uni.params.inner_half_length + off;
-float omega = 1.0f;
-ThingLocation locs[] = {
-	{&uni.outer, {-(uni.params.outer_half_length + off), 0.0f}},
-	{&uni.outer, {-A, uni.params.outer_radius + off}},
+const float off = .5f * uni.params.outer_half_length;
+const float A = uni.params.inner_half_length + off;
+const float omega = 1.0f;
+const float thing_radius = 0.25f;
+Sphere things[] = {
+	{0.25f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f}},
+	{0.25f, &uni.outer, {-A, uni.params.outer_radius + off}},
 };
 
 void render() {
@@ -391,31 +391,12 @@ void render() {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	auto a_thing = &uni.a_thing;
 	const float envelope_radius = 0.5f;
-	const float thing_radius = 0.25f;
-	a_thing->radius = thing_radius;
 	uni.outer.things.clear();
 	uni.channel.things.clear();
-	for (auto &loc: locs) {
-		loc.space->things.push_back({a_thing, loc.pos, envelope_radius});
-		for (auto over: loc.space->boundary->findOverlaps(loc.pos, envelope_radius)) {
-			if (auto flat = dynamic_cast<ThingySubspace *>(over.into)) {
-				flat->things.push_back({a_thing, over.intoPos, envelope_radius});
-			} else {
-			}
-		}
-		vec2 v = vec2(A * omega * sin(omega * t), 0.0f);
-		loc.pos += dt * v;
-		if (!loc.space->boundary->contains(loc.pos)) {
-			auto next = loc.space->boundary->leave({loc.pos, v});
-			if (auto flat = dynamic_cast<ThingySubspace *>(next.into)) {
-				loc.space = const_cast<ThingySubspace *>(flat); // все ThingySubspace неконстантны
-				loc.pos = next.intoPos;
-			} else {
-				throw "Oops! A thing is destroyed by the space curvature";
-			}
-		}
+	for (auto &thing: things) {
+		thing.move(dt * vec2(A * omega * sin(omega * t), 0.0f));
+		thing.encache(envelope_radius);
 	}
 
 	float theta = .3 * t;

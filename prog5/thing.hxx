@@ -19,8 +19,9 @@ public:
 class Thing {
 public:
 	Location loc; ///< Текущее положение центра
-
 	virtual float hit(Ray ray) const = 0;
+	void move(vec2 off);
+	void encache(float radius) const;
 };
 
 struct ThingInfo {
@@ -38,7 +39,7 @@ struct ThingTraceResult {
 class ThingySubspace: public Subspace {
 public:
 	SubspaceBoundaryEx *boundary;
-	std::vector<ThingInfo> things;
+	mutable std::vector<ThingInfo> things;
 
 	TraceResult trace(Ray ray) const final override {
 		return thingless().trace(ray);
@@ -91,7 +92,26 @@ private:
 	}
 };
 
-struct ThingLocation {
-	ThingySubspace *space;
-	vec2 pos;
-};
+inline void Thing::encache(float radius) const {
+	loc.space->things.push_back({this, loc.pos, radius});
+	for (auto over: loc.space->boundary->findOverlaps(loc.pos, radius)) {
+		if (auto flat = dynamic_cast<ThingySubspace *>(over.into)) {
+			flat->things.push_back({this, over.intoPos, radius});
+		} else {
+			throw "Oops! A thing is destroyed by the space curvature";
+		}
+	}
+}
+
+inline void Thing::move(vec2 off) {
+	loc.pos += off;
+	while (!loc.space->boundary->contains(loc.pos)) {
+		auto next = loc.space->boundary->leave({loc.pos, off});
+		if (auto flat = dynamic_cast<ThingySubspace *>(next.into)) {
+			loc.space = flat;
+			loc.pos = next.intoPos;
+		} else {
+			throw "Oops! A thing is destroyed by the space curvature";
+		}
+	}
+}
