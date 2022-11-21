@@ -48,7 +48,7 @@ struct Coefs {
 
 static constexpr float eps = 1e-4;
 
-class InwardsBoundary final: public SubspaceBoundary {
+class InwardsBoundary final: public SubspaceBoundaryEx {
 public:
 	Params params;
 	Subspace *side;
@@ -68,6 +68,33 @@ public:
 		if (!std::isfinite(dist))
 			return {nullptr, from.pos, from.pos, mat2(1)};
 		const vec2 pos = from.pos + dist * from.dir;
+		return leave({pos, from.dir});
+	}
+
+	std::vector<Transition> findOverlaps(vec2 pos, float max_distance) const override {
+		const vec2 radius = {params.outer_half_length, params.outer_radius};
+		std::vector<Transition> overlaps;
+		if (all(lessThanEqual(abs(pos), radius + max_distance))) {
+			if (abs(pos.y) - max_distance <= params.inner_radius) {
+				assert(abs(pos.x) >= params.outer_half_length);
+				vec2 into = pos;
+				into.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
+				overlaps.push_back({channel, pos, into, mat2(1)});
+			}
+			if (abs(pos.y) + max_distance >= params.inner_radius) {
+				overlaps.push_back({side, pos, pos, mat2(1)});
+			}
+		}
+		return overlaps;
+	}
+
+	bool contains(vec2 point) const override {
+		const vec2 radius = {params.outer_half_length, params.outer_radius};
+		return any(greaterThan(abs(point), radius));
+	}
+
+	Transition leave(Ray at) const override {
+		vec2 pos = at.pos;
 		if (abs(pos.y) < params.inner_radius) {
 			vec2 into = pos;
 			into.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
@@ -78,7 +105,7 @@ public:
 	}
 };
 
-class ChannelBoundary final: public SubspaceBoundary {
+class ChannelBoundary final: public SubspaceBoundaryEx {
 public:
 	Params params;
 	Subspace *outer;
@@ -95,6 +122,60 @@ public:
 		vec2 into = pos;
 
 		if (dist_outer <= dist_side) {
+			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
+			return {outer, pos, into, mat2(1)};
+		} else {
+			Coefs cs(params);
+			float m = 1.0f;
+			if (abs(pos.x) < cs.x1) {
+				into.x *= cs.y1 / cs.x1;
+				m = cs.y1 / cs.x1;
+			} else if (abs(pos.x) < cs.x2) {
+				m = 2 * cs.w * (abs(pos.x) - cs.x0);
+				into.x = copysign(cs.y0 + cs.w * sqr(abs(pos.x) - cs.x0), pos.x);
+			} else {
+				into.x += copysign(cs.y2 - cs.x2, pos.x);
+			}
+			return {side, pos, into, diagonal(m, 1)};
+		}
+	}
+
+	std::vector<Transition> findOverlaps(vec2 pos, float max_distance) const override {
+		std::vector<Transition> overlaps;
+		if (abs(pos.x) + max_distance >= params.inner_half_length) {
+			vec2 into = pos;
+			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
+			overlaps.push_back({outer, pos, into, mat2(1)});
+		}
+		if (abs(pos.y) + max_distance >= params.inner_radius) {
+			Coefs cs(params);
+			vec2 into = pos;
+			float m = 1.0f;
+			if (abs(pos.x) < cs.x1) {
+				into.x *= cs.y1 / cs.x1;
+				m = cs.y1 / cs.x1;
+			} else if (abs(pos.x) < cs.x2) {
+				m = 2 * cs.w * (abs(pos.x) - cs.x0);
+				into.x = copysign(cs.y0 + cs.w * sqr(abs(pos.x) - cs.x0), pos.x);
+			} else {
+				into.x += copysign(cs.y2 - cs.x2, pos.x);
+			}
+			overlaps.push_back({side, pos, into, diagonal(m, 1)});
+		}
+		return overlaps;
+	}
+
+	bool contains(vec2 point) const override {
+		const vec2 radius = {params.inner_half_length, params.inner_radius};
+		return all(lessThan(abs(point), radius));
+	}
+
+	Transition leave(Ray at) const override {
+		const vec2 radius = {params.inner_half_length, params.inner_radius};
+		const vec2 pos = at.pos;
+		vec2 into = pos;
+
+		if (any(lessThanEqual(abs(pos), radius))) {
 			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
 			return {outer, pos, into, mat2(1)};
 		} else {
@@ -231,58 +312,101 @@ double t_frozen = 0.0;
 double t_offset = 0.0;
 bool active = true;
 
-void render() {
- 	double t0 = active ? glfwGetTime() - t_offset : t_frozen;
+class MyUniverse {
+public:
 
 	Params params;
-	Coefs cs(params);
+	Coefs cs{params};
 	FlatSubspace a_thing;
 	FlatSubspace outer, channel;
 	RiemannSubspace side;
 	ChannelSideMetric side_metric;
 	SideBoundary sbnd;
-	side.metric = &side_metric;
-	side.map = &sbnd;
 	InwardsBoundary ibnd;
-	ibnd.side = &side;
-	ibnd.channel = &channel;
 	ChannelBoundary cbnd;
-	cbnd.outer = &outer;
-	cbnd.side = &side;
-	sbnd.outer = &outer;
-	sbnd.channel = &channel;
 	ThingyBoundary outer_boundary;
-	outer_boundary.base = &ibnd;
-	outer.boundary = &outer_boundary;
 	ThingyBoundary channel_boundary;
-	channel_boundary.base = &cbnd;
-	channel.boundary = &channel_boundary;
+
+public:
+	MyUniverse() {
+		side.metric = &side_metric;
+		side.map = &sbnd;
+		ibnd.side = &side;
+		ibnd.channel = &channel;
+		cbnd.outer = &outer;
+		cbnd.side = &side;
+		sbnd.outer = &outer;
+		sbnd.channel = &channel;
+		outer_boundary.base = &ibnd;
+		outer.boundary = &outer_boundary;
+		channel_boundary.base = &cbnd;
+		channel.boundary = &channel_boundary;
+	}
+};
+
+MyUniverse uni;
+float off = .5f * uni.params.outer_half_length;
+float A = uni.params.inner_half_length + off;
+float omega = 1.0f;
+ThingLocation locs[] = {
+	{&uni.outer_boundary, {-(uni.params.outer_half_length + off), 0.0f}},
+	{&uni.outer_boundary, {-A, uni.params.outer_radius + off}},
+};
+
+void render() {
+	static double t0 = 0.0;
+	double t = active ? glfwGetTime() - t_offset : t_frozen;
+	float dt = active ? t - t0 : 0.0;
+	t0 = t;
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
-		{&outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 1.0f})},
-		{&channel, make_shared<ChannelVisual>(vec3{0.4f, 1.0f, 0.1f})},
-		{&side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
+		{&uni.outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 1.0f})},
+		{&uni.channel, make_shared<ChannelVisual>(vec3{0.4f, 1.0f, 0.1f})},
+		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
 	std::unordered_map<SubspaceBoundary const *, shared_ptr<SpaceVisual>> visuals2 = {
 		{nullptr, visuals[nullptr]},
-		{outer.boundary, visuals[&outer]},
-		{channel.boundary, visuals[&channel]},
+		{uni.outer.boundary, visuals[&uni.outer]},
+		{uni.channel.boundary, visuals[&uni.channel]},
 	};
 
-	outer_boundary.things.push_back({&a_thing, vec2(7.0f, 5.0f) * vec2(cos(1.2 - .7 * t0), sin(1.2 - .7 * t0)), .5});
-	channel_boundary.things.push_back({&a_thing, vec2(2.0f, 1.0f) * vec2(cos(2.7 + 1.3 * t0), cos(2.3 + 0.9 * t0)), .5});
-	channel_boundary.things.push_back({&a_thing, vec2(2.0f, 1.0f) * vec2(cos(2.3 + 0.5 * t0), cos(1.9 + 1.7 * t0)), .5});
+	const float thing_radius = 0.5f;
+	uni.outer_boundary.things.clear();
+	uni.channel_boundary.things.clear();
+	for (auto &loc: locs) {
+		loc.space->things.push_back({&uni.a_thing, loc.pos, thing_radius});
+		for (auto over: loc.space->findOverlaps(loc.pos, thing_radius)) {
+			if (auto flat = dynamic_cast<FlatSubspace const *>(over.into)) {
+				auto bnd = dynamic_cast<ThingyBoundary *>(flat->boundary);
+				bnd->things.push_back({&uni.a_thing, over.intoPos, .5});
+			} else {
+			}
+		}
+		vec2 v = vec2(A * omega * sin(omega * t), 0.0f);
+		loc.pos += dt * v;
+		if (!loc.space->contains(loc.pos)) {
+			auto next = loc.space->leave({loc.pos, v});
+			if (auto flat = dynamic_cast<FlatSubspace const *>(next.into)) {
+				auto bnd = dynamic_cast<ThingyBoundary *>(flat->boundary);
+				assert(bnd);
+				loc.space = bnd;
+				loc.pos = next.intoPos;
+			} else {
+				throw "Oops! A thing is destroyed by the space curvature";
+			}
+		}
+	}
 
-	float theta = .3 * t0;
+	float theta = .3 * t;
 	int N = 120;
 	for (int k = -N; k < N; k++) {
 		float phi = (.5 + k) * (M_PI / N);
 		TrackPoint pt;
 		pt.pos = 8.0f * vec2(cos(theta), sin(theta));
 		pt.dir = vec2(cos(phi), sin(phi));
-		pt.space = &outer;
+		pt.space = &uni.outer;
 		int n = 0;
 		vec2 p, v;
 		glBegin(GL_LINE_STRIP);
@@ -296,7 +420,7 @@ void render() {
 				v = visual->jacobi(tp.pos) * pt.dir;
 				glVertex2fv(value_ptr(p));
 			}
-			if (track.to.space == &a_thing) {
+			if (track.to.space == &uni.a_thing) {
 				glColor3f(1, 1, 0);
 				glVertex2fv(value_ptr(p));
 				glVertex2fv(value_ptr(p + .5f * v));
@@ -318,11 +442,24 @@ void render() {
 		glEnd();
 	}
 
+	vec4 colors[] = {
+		{.2, .2, .2, .75},
+		{.8, .2, .2, .75},
+		{.2, .8, .2, .75},
+		{.8, .8, .2, .75},
+		{.2, .2, .8, .75},
+		{.8, .2, .8, .75},
+		{.2, .8, .8, .75},
+		{.8, .8, .8, .75},
+	};
+	int k = 0;
 	int M = 30;
-	for (auto const &bnd: {&outer_boundary, &channel_boundary}) {
+	for (auto const &bnd: {&uni.outer_boundary, &uni.channel_boundary}) {
 		auto &&visual = visuals2.at(bnd);
 		for (auto &&info: bnd->things) {
-			glColor4f(.8, .8, .8, .75);
+			glColor3fv(value_ptr(visual->color));
+// 			glColor4fv(value_ptr(colors[k++%8]));
+// 			glColor4f(.8, .8, .8, .75);
 			glBegin(GL_LINE_LOOP);
 			for (int k = -M; k < M; k++) {
 				float phi = (.5 + k) * (M_PI / M);
@@ -334,21 +471,21 @@ void render() {
 
 	glBegin(GL_LINE_LOOP);
 	glColor3f(.0f, .9f, .9f);
-	glVertex2f(-params.outer_half_length, -params.outer_radius);
-	glVertex2f(-params.outer_half_length, params.outer_radius);
-	glVertex2f(params.outer_half_length, params.outer_radius);
-	glVertex2f(params.outer_half_length, -params.outer_radius);
+	glVertex2f(-uni.params.outer_half_length, -uni.params.outer_radius);
+	glVertex2f(-uni.params.outer_half_length, uni.params.outer_radius);
+	glVertex2f(uni.params.outer_half_length, uni.params.outer_radius);
+	glVertex2f(uni.params.outer_half_length, -uni.params.outer_radius);
 	glEnd();
 	glBegin(GL_LINES);
 	glColor3f(.0f, .2f, .7f);
-	glVertex2f(-params.outer_half_length, -params.inner_radius);
-	glVertex2f(params.outer_half_length, -params.inner_radius);
-	glVertex2f(-params.outer_half_length, params.inner_radius);
-	glVertex2f(params.outer_half_length, params.inner_radius);
-	glVertex2f(-cs.y1, -params.outer_radius);
-	glVertex2f(-cs.y1, params.outer_radius);
-	glVertex2f(cs.y1, params.outer_radius);
-	glVertex2f(cs.y1, -params.outer_radius);
+	glVertex2f(-uni.params.outer_half_length, -uni.params.inner_radius);
+	glVertex2f(uni.params.outer_half_length, -uni.params.inner_radius);
+	glVertex2f(-uni.params.outer_half_length, uni.params.inner_radius);
+	glVertex2f(uni.params.outer_half_length, uni.params.inner_radius);
+	glVertex2f(-uni.cs.y1, -uni.params.outer_radius);
+	glVertex2f(-uni.cs.y1, uni.params.outer_radius);
+	glVertex2f(uni.cs.y1, uni.params.outer_radius);
+	glVertex2f(uni.cs.y1, -uni.params.outer_radius);
 	glEnd();
 }
 
@@ -481,6 +618,10 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 	}
 	if (key == GLFW_KEY_ENTER && mods == GLFW_MOD_ALT)
 		toggle_fullscreen(window);
+	if (key == GLFW_KEY_B) {
+		background_lightness = 1.0f - background_lightness;
+		paint(window);
+	}
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {

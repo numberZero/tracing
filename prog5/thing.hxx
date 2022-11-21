@@ -3,15 +3,32 @@
 #include <limits>
 #include "prog5/subspace.hxx"
 
+struct Location {
+	FlatSubspace const *space;
+	vec2 pos; ///< Положение (в координатах пространства @p space)
+	mat2 rot; ///< Матрица поворота (ортогональная!)
+};
+
+class SubspaceBoundaryEx: public SubspaceBoundary, public SwitchMap {
+public:
+	virtual std::vector<Transition> findOverlaps(vec2 pos, float max_distance) const = 0;
+};
+
+class Thing {
+public:
+	float radius;
+	Location loc; ///< Текущее положение центра
+};
+
 struct ThingInfo {
 	FlatSubspace const *thing;
 	vec2 pos;
 	float radius;
 };
 
-class ThingyBoundary: public SubspaceBoundary {
+class ThingyBoundary: public SubspaceBoundaryEx {
 public:
-	SubspaceBoundary *base;
+	SubspaceBoundaryEx *base;
 	std::vector<ThingInfo> things;
 
 	Transition findBoundary(Ray ray) const override {
@@ -36,4 +53,21 @@ public:
 
 		return t;
 	}
+
+	std::vector<Transition> findOverlaps(vec2 at, float max_distance) const override {
+		return base->findOverlaps(at, max_distance);
+	}
+
+	bool contains(vec2 point) const override {
+		return base->contains(point);
+	}
+
+	Transition leave(Ray at) const override {
+		return base->leave(at);
+	}
+};
+
+struct ThingLocation {
+	ThingyBoundary *space;
+	vec2 pos;
 };
