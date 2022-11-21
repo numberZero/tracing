@@ -399,11 +399,11 @@ void render() {
 		glBegin(GL_LINE_STRIP);
 		for (;;) {
 			auto visual = visuals[pt.space];
-			auto track = pt.space->trace(pt);
+			auto traced = pt.space->trace(pt);
 			glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
 			glVertex2fv(value_ptr(visual->where(pt.pos)));
-			p = visual->where(track.from.pos);
-			v = visual->jacobi(track.from.pos) * pt.dir;
+			p = visual->where(traced.pt.pos);
+			v = visual->jacobi(traced.pt.pos) * pt.dir;
 			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
 				if (auto t = flat->traceToThing(pt); t.thing) {
 					// TODO Если track.to.space — ThingySubspace, там может найтись Thing ещё ближе; надо проверять.
@@ -417,8 +417,8 @@ void render() {
 				}
 			}
 			glVertex2fv(value_ptr(p));
-			if (track.to.space) {
-				pt = track.to;
+			if (traced.to.space) {
+				pt = traced.to;
 			} else {
 				glVertex2fv(value_ptr(p + 50.f * v));
 				break;

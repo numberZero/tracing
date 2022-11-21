@@ -37,7 +37,7 @@ struct TrackPoint: Ray {
 };
 
 struct TraceResult {
-	TrackPoint from;
+	TrackPoint pt;
 	TrackPoint to;
 	float distance;
 };
