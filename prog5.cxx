@@ -374,7 +374,8 @@ const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
 const float thing_radius = 0.25f;
 Sphere things[] = {
-	{0.25f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f}},
+	{0.15f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f}},
+	{0.45f, &uni.outer, {-(uni.params.outer_half_length + off), 0.5f}},
 	{0.25f, &uni.outer, {-A, uni.params.outer_radius + off}},
 };
 
@@ -391,12 +392,11 @@ void render() {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	const float envelope_radius = 0.5f;
 	uni.outer.things.clear();
 	uni.channel.things.clear();
 	for (auto &thing: things) {
 		thing.move(dt * vec2(A * omega * sin(omega * t), 0.0f));
-		thing.encache(envelope_radius);
+		thing.encache(2.0f * thing.radius);
 	}
 
 	float theta = .3 * t;
@@ -472,6 +472,16 @@ void render() {
 			}
 			glEnd();
 		}
+	}
+	glColor4f(.8, .8, .8, .75);
+	for (auto &&thing: things) {
+		auto &&visual = visuals.at(thing.loc.space);
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex2fv(value_ptr(visual->where(thing.loc.pos + thing.radius * vec2(cos(phi), sin(phi)))));
+		}
+		glEnd();
 	}
 
 	glBegin(GL_LINE_LOOP);
