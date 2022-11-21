@@ -18,8 +18,9 @@ public:
 
 class Thing {
 public:
-	float radius;
 	Location loc; ///< Текущее положение центра
+
+	virtual float hit(Ray ray) const = 0;
 };
 
 struct ThingInfo {
@@ -66,19 +67,11 @@ public:
 	ThingTraceResult traceToThing(Ray ray) const {
 		ThingTraceResult result;
 		Transition t = boundary->findBoundary(ray);
-		float dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
+		float max_dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
 		for (auto &&info: findThingsOnRay(ray)) {
-			const vec2 rel = info.pos - ray.pos;
-			const float t_center = dot(rel, ray.dir);
-			const float d2 = dot(rel, rel) - sqr(t_center);
-			const float r = info.thing->radius;
-			if (d2 > sqr(r))
-				continue;
-			const float t_diff = std::sqrt(sqr(r) - d2);
-			const float t_near = t_center - t_diff;
-			const float t_far = t_center + t_diff;
-			if (t_far >= 0.0f && t_near < dist) { // Да, именно так. Если дальняя точка впереди, пишем расстояние до ближней, даже если она позади.
-				dist = t_near;
+			const float dist = info.thing->hit({ray.pos - info.pos, ray.dir});
+			if (dist < max_dist) {
+				max_dist = dist;
 				const vec2 pos = ray.pos + dist * ray.dir;
 				result = {
 					.thing = info.thing,

@@ -306,6 +306,26 @@ public:
 	}
 };
 
+class Sphere: public Thing {
+public:
+	float radius;
+
+	float hit(Ray ray) const override {
+		const vec2 rel = -ray.pos;
+		const float t_center = -dot(ray.pos, ray.dir);
+		const float d2 = dot(rel, rel) - sqr(t_center);
+		if (d2 > sqr(radius))
+			return std::numeric_limits<float>::infinity();
+		const float t_diff = std::sqrt(sqr(radius) - d2);
+		const float t_near = t_center - t_diff;
+		const float t_far = t_center + t_diff;
+		if (t_far >= 0.0f) // Если дальняя точка впереди, возвращаем расстояние до ближней, даже если она позади.
+			return t_near;
+		else
+			return std::numeric_limits<float>::infinity();
+	}
+};
+
 using std::shared_ptr, std::make_shared;
 
 double t_frozen = 0.0;
@@ -316,7 +336,7 @@ class MyUniverse {
 public:
 	Params params;
 	Coefs cs{params};
-	Thing a_thing;
+	Sphere a_thing;
 	ThingySubspace outer, channel;
 	RiemannSubspace side;
 	ChannelSideMetric side_metric;
@@ -458,13 +478,6 @@ void render() {
 			for (int k = -M; k < M; k++) {
 				float phi = (.5 + k) * (M_PI / M);
 				glVertex2fv(value_ptr(visual->where(info.pos + info.radius * vec2(cos(phi), sin(phi)))));
-			}
-			glEnd();
-			glColor4f(.8, .8, .8, .75);
-			glBegin(GL_LINE_LOOP);
-			for (int k = -M; k < M; k++) {
-				float phi = (.5 + k) * (M_PI / M);
-				glVertex2fv(value_ptr(visual->where(info.pos + info.thing->radius * vec2(cos(phi), sin(phi)))));
 			}
 			glEnd();
 		}
