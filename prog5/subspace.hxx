@@ -99,14 +99,9 @@ public:
 			auto a = covar(metric->krist(p), v);
 			if (dt * ::length(a) > eta) {
 				large_steps++;
-				int substeps = ceil(dt * ::length(a) / eta);
-				substeps |= substeps >> 16;
-				substeps |= substeps >> 8;
-				substeps |= substeps >> 4;
-				substeps |= substeps >> 2;
-				substeps |= substeps >> 1;
-				substeps++;
+				int substeps = next_pow2(std::ceil(dt * ::length(a) / eta));
 				float subdt = dt / substeps;
+				assert(subdt * ::length(a) <= eta);
 				for (int l = 0; l < substeps; l++) {
 					auto a = covar(metric->krist(p), v);
 					v += subdt * a;
