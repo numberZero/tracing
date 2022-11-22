@@ -14,6 +14,7 @@
 #include "math.hxx"
 #include "prog5/subspace.hxx"
 #include "prog5/thing.hxx"
+#include "prog5/universe.hxx"
 
 #define TEST 0
 // #define debugf(...) printf(__VA_ARGS__)
@@ -334,6 +335,10 @@ public:
 		else
 			return std::numeric_limits<float>::infinity();
 	}
+
+	float getRadius() const noexcept final override {
+		return 2.0f * radius; // Только для тестирования; на самом деле `return radius` вполне подошёл бы.
+	}
 };
 
 using std::shared_ptr, std::make_shared;
@@ -342,7 +347,7 @@ double t_frozen = 0.0;
 double t_offset = 0.0;
 bool active = true;
 
-class MyUniverse {
+class MyUniverse: public Universe {
 public:
 	Params params;
 	Coefs cs{params};
@@ -365,6 +370,9 @@ public:
 		sbnd.channel = &channel;
 		outer.boundary = &ibnd;
 		channel.boundary = &cbnd;
+
+		thingySpaces.push_back(&outer);
+		thingySpaces.push_back(&channel);
 	}
 };
 
@@ -373,11 +381,16 @@ const float off = .5f * uni.params.outer_half_length;
 const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
 const float thing_radius = 0.25f;
-Sphere things[] = {
+Sphere spheres[] = {
 	{0.15f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f}},
 	{0.45f, &uni.outer, {-(uni.params.outer_half_length + off), 0.5f}},
 	{0.25f, &uni.outer, {-A, uni.params.outer_radius + off}},
 };
+
+void init() {
+	for (auto &sphere: spheres)
+		uni.things.push_back(&sphere);
+}
 
 void render() {
 	static double t0 = 0.0;
@@ -392,12 +405,9 @@ void render() {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	uni.outer.things.clear();
-	uni.channel.things.clear();
-	for (auto &thing: things) {
+	for (auto &thing: spheres)
 		thing.move(dt * vec2(A * omega * sin(omega * t), 0.0f));
-		thing.encache(2.0f * thing.radius);
-	}
+	uni.updateCaches();
 
 	float theta = .3 * t;
 	int N = 120;
@@ -461,7 +471,7 @@ void render() {
 	};
 	int k = 0;
 	int M = 30;
-	for (auto const &bnd: {&uni.outer, &uni.channel}) {
+	for (auto *bnd: uni.thingySpaces) {
 		auto &&visual = visuals.at(bnd);
 		for (auto &&info: bnd->things) {
 			glColor3fv(value_ptr(visual->color));
@@ -474,7 +484,7 @@ void render() {
 		}
 	}
 	glColor4f(.8, .8, .8, .75);
-	for (auto &&thing: things) {
+	for (auto &&thing: spheres) {
 		auto &&visual = visuals.at(thing.loc.space);
 		glBegin(GL_LINE_LOOP);
 		for (int k = -M; k < M; k++) {
@@ -569,7 +579,7 @@ void paint(GLFWwindow* window) {
 	frames++;
 }
 
-void init() {
+void initGL() {
 	glCreateFramebuffers(2, fbs);
 }
 
@@ -646,6 +656,7 @@ int main() {
 #if TEST
 	test();
 #else
+	init();
 	glfwInit();
 	glfwWindowHint(GLFW_ALPHA_BITS, 8);
 	glfwWindowHint(GLFW_DEPTH_BITS, 0);
@@ -660,7 +671,7 @@ int main() {
 	auto wnd = glfwCreateWindow(1600, 1200, title, nullptr, nullptr);
 	glfwMakeContextCurrent(wnd);
 	glDebugMessageCallback(debug, nullptr);
-	init();
+	initGL();
 	glfwSwapInterval(1);
 	glfwSetWindowRefreshCallback(wnd, paint);
 	glfwSetFramebufferSizeCallback(wnd, resized);
