@@ -699,8 +699,8 @@ int main() {
 				float larges = RiemannSubspace::large_steps / den;
 				RiemannSubspace::large_steps = 0;
 				RiemannSubspace::regular_steps = 0;
-				snprintf(title, sizeof(title), "%s @ %.1f FPS, %.1f μs/ray, %.0f%% steps subdivided",
-					::title, fps, 1e6 * rt_time / rt_rays, 100.0f * larges);
+				snprintf(title, sizeof(title), "%s @ %.1f FPS, %.1f μs/ray, %.1f steps/ray, %.0f%% steps subdivided",
+					::title, fps, 1e6 * rt_time / rt_rays, den / rt_rays, 100.0f * larges);
 				rt_time = 0.0;
 				rt_rays = 0;
 				glfwSetWindowTitle(wnd, title);
