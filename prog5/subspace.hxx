@@ -77,8 +77,10 @@ public:
 
 class RiemannSubspace: public Subspace {
 public:
-	static constexpr float dt = 1e-2;
-	static constexpr float eta = 1e-2;
+	static constexpr float dt = 0.01;
+	static constexpr float eta = 0.02;
+	inline static int large_steps = 0;
+	inline static int regular_steps = 0;
 
 	const SwitchMap *map;
 	const RiemannMetric<2> *metric;
@@ -96,6 +98,7 @@ public:
 		while (map->contains(p)) {
 			auto a = covar(metric->krist(p), v);
 			if (dt * ::length(a) > eta) {
+				large_steps++;
 				int substeps = ceil(dt * ::length(a) / eta);
 				substeps |= substeps >> 16;
 				substeps |= substeps >> 8;
@@ -110,6 +113,7 @@ public:
 					p += subdt * v;
 				}
 			} else {
+				regular_steps++;
 				v += dt * a;
 				p += dt * v;
 			}

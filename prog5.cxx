@@ -346,6 +346,8 @@ using std::shared_ptr, std::make_shared;
 double t_frozen = 0.0;
 double t_offset = 0.0;
 bool active = true;
+double rt_time = 0.0;
+int rt_rays = 0;
 
 class MyUniverse: public Universe {
 public:
@@ -409,6 +411,7 @@ void render() {
 		thing.move(dt * vec2(A * omega * sin(omega * t), 0.0f));
 	uni.updateCaches();
 
+	double rtt1 = glfwGetTime();
 	float theta = .3 * t;
 	int N = 120;
 	for (int k = -N; k < N; k++) {
@@ -457,7 +460,10 @@ void render() {
 			}
 		}
 		glEnd();
+		rt_rays++;
 	}
+	double rtt2 = glfwGetTime();
+	rt_time += rtt2 - rtt1;
 
 	vec4 colors[] = {
 		{.2, .2, .2, .75},
@@ -689,7 +695,14 @@ int main() {
 				t0 = t1;
 				frames = 0;
 				char title[256];
-				snprintf(title, sizeof(title), "%s @ %.1f FPS", ::title, fps);
+				float den = RiemannSubspace::large_steps + RiemannSubspace::regular_steps;
+				float larges = RiemannSubspace::large_steps / den;
+				RiemannSubspace::large_steps = 0;
+				RiemannSubspace::regular_steps = 0;
+				snprintf(title, sizeof(title), "%s @ %.1f FPS, %.1f μs/ray, %.0f%% steps subdivided",
+					::title, fps, 1e6 * rt_time / rt_rays, 100.0f * larges);
+				rt_time = 0.0;
+				rt_rays = 0;
 				glfwSetWindowTitle(wnd, title);
 			}
 		} else {
