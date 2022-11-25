@@ -1,3 +1,6 @@
 [submodule "pcg-cpp"]
 	path = pcg-cpp
 	url = https://github.com/imneme/pcg-cpp.git
+[submodule "asyncpp"]
+	path = asyncpp
+	url = https://github.com/asyncpp/asyncpp.git

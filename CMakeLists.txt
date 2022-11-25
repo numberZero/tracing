@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 find_package(Threads REQUIRED)
 
+add_subdirectory(asyncpp)
+
 add_compile_definitions(
 	GL_GLEXT_PROTOTYPES
 	)
@@ -58,6 +60,7 @@ target_link_libraries(prog5
 	Threads::Threads
 	glfw
 	GL
+	asyncpp
 )
 
 option(MULTITHREAD "Use multithreading" ON)
