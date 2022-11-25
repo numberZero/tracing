@@ -502,7 +502,8 @@ namespace settings {
 	bool show_frame = true;
 	bool show_thing_frame = false;
 	bool relative_display = true;
-	bool physical_acceleration = true;
+	bool physical_acceleration = false;
+	bool mouse_control = false;
 
 	float movement_acceleration = 6.0f;
 	float movement_speed = 6.0f;
@@ -526,10 +527,20 @@ void update(GLFWwindow *wnd) {
 	float mov = 0.0f;
 	float rot = 0.0f;
 	static vec2 v = {0.0f, 0.0f};
-	if (glfwGetKey(wnd, GLFW_KEY_LEFT) == GLFW_PRESS) rot += 1.0f;
-	if (glfwGetKey(wnd, GLFW_KEY_RIGHT) == GLFW_PRESS) rot -= 1.0f;
-	if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) mov += 1.0f;
-	if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) mov -= 1.0f;
+	ivec2 wsize;
+	dvec2 mouse;
+	glfwGetCursorPos(wnd, &mouse.x, &mouse.y);
+	glfwGetWindowSize(wnd, &wsize.x, &wsize.y);
+	if (settings::mouse_control) {
+		vec2 ctl = clamp(2.0f * vec2(mouse) / vec2(wsize) - 1.0f, -1.0f, 1.0f);
+		mov = -ctl.y;
+		rot = -ctl.x;
+	} else {
+		if (glfwGetKey(wnd, GLFW_KEY_LEFT) == GLFW_PRESS) rot += 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_RIGHT) == GLFW_PRESS) rot -= 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) mov += 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) mov -= 1.0f;
+	}
 
 	if (settings::physical_acceleration)
 		v += dt * settings::movement_acceleration * vec2(0.0f, mov);
@@ -561,7 +572,7 @@ void update(GLFWwindow *wnd) {
 		v = {};
 	}
 
-	float theta = .3 * t;
+	float theta = .7 * t;
 	sun = 8.0f * vec2(cos(theta), sin(theta));
 }
 
@@ -701,6 +712,18 @@ void render() {
 		glVertex2f(cs.y1, -uni.params.outer_radius);
 		glEnd();
 	}
+
+	glLoadIdentity();
+
+	if (settings::mouse_control) {
+		glColor4f(.5f, .5f, .5f, .5f);
+		glBegin(GL_LINES);
+		glVertex2f(-20.f, 0.f);
+		glVertex2f(20.f, 0.f);
+		glVertex2f(0.f, -20.f);
+		glVertex2f(0.f, 20.f);
+		glEnd();
+	}
 }
 
 float background_lightness = 0.1;
@@ -808,6 +831,8 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		settings::relative_display = !settings::relative_display;
 	if (key == GLFW_KEY_P)
 		settings::physical_acceleration = !settings::physical_acceleration;
+	if (key == GLFW_KEY_M)
+		settings::mouse_control = !settings::mouse_control;
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
