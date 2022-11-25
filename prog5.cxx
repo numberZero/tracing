@@ -502,8 +502,10 @@ namespace settings {
 	bool show_frame = true;
 	bool show_thing_frame = false;
 	bool relative_display = true;
+	bool physical_acceleration = true;
 
 	float movement_acceleration = 6.0f;
+	float movement_speed = 6.0f;
 	float rotation_speed = 2.5f;
 }
 
@@ -529,7 +531,10 @@ void update(GLFWwindow *wnd) {
 	if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) mov += 1.0f;
 	if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) mov -= 1.0f;
 
-	v += dt * settings::movement_acceleration * vec2(0.0f, mov);
+	if (settings::physical_acceleration)
+		v += dt * settings::movement_acceleration * vec2(0.0f, mov);
+	else
+		v = settings::movement_speed * vec2(0.0f, mov);
 	mat2 rmat = rotate(dt * settings::rotation_speed * rot);
 	v = transpose(rmat) * v;
 	me->rotate(rmat);
@@ -836,6 +841,8 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		settings::show_frame = !settings::show_frame;
 	if (key == GLFW_KEY_R)
 		settings::relative_display = !settings::relative_display;
+	if (key == GLFW_KEY_P)
+		settings::physical_acceleration = !settings::physical_acceleration;
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
