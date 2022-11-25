@@ -398,8 +398,7 @@ public:
 				vec2 side_normal = cross(side_tangent);
 				float k = -determinant(mat2(a, b));
 				float dist = (k - dot(ray.pos, side_normal)) / dot(ray.dir, side_normal);
-				if (dist >= 0.0f)
-					min_dist = min(min_dist, dist); // Для выпуклого контура можно было бы сразу `return dist`.
+				min_dist = min(min_dist, dist); // Для выпуклого контура можно было бы сразу `return dist`.
 			}
 			a = b;
 		}
@@ -464,12 +463,14 @@ MyUniverse uni;
 const float off = .5f * uni.params.outer_half_length;
 const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
+const float a = .3f, b = 0.5f * a;
 Sphere spheres[] = {
 	{0.15f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f}},
 	{0.45f, &uni.outer, {-(uni.params.outer_half_length + off), 0.5f}},
 };
 Polygon polys[] = {
-	{{{-.3f, -.3f}, {0.f, -.2f}, {.3f, -.3f}, {.0f, .3f}}, &uni.outer, {-A, uni.params.outer_radius + off}},
+	{{{-a, -a}, {0.f, -0.500f * a}, {a, -a}, {0.f, 1.414f * a}}, &uni.outer, {-(uni.params.outer_half_length + off), -1.0f}},
+	{{{-a, -a}, {0.f, -0.500f * a}, {a, -a}, {0.f, 1.414f * a}}, &uni.outer, {-A, uni.params.outer_radius + off}},
 };
 
 void init() {
@@ -477,6 +478,15 @@ void init() {
 		uni.things.push_back(&sphere);
 	for (auto &th: polys)
 		uni.things.push_back(&th);
+	for (auto &th: uni.things)
+		th->loc.rot = {0, -1, 1, 0};
+}
+
+namespace settings {
+	int rays = 120;
+	int trace_limit = 10;
+	bool show_term_dirs = true;
+	bool show_ray_dirs = false;
 }
 
 void render() {
@@ -493,12 +503,12 @@ void render() {
 	};
 
 	for (auto &thing: uni.things)
-		thing->move(dt * vec2(A * omega * sin(omega * t), 0.0f));
+		thing->move(dt * vec2(0.0f, A * omega * sin(omega * t)));
 	uni.updateCaches();
 
 	double rtt1 = glfwGetTime();
 	float theta = .3 * t;
-	int N = 120;
+	int N = settings::rays / 2;;
 	for (int k = -N; k < N; k++) {
 		float phi = (.5 + k) * (M_PI / N);
 		TrackPoint pt;
@@ -510,6 +520,17 @@ void render() {
 		glBegin(GL_LINE_STRIP);
 		for (;;) {
 			auto visual = visuals[pt.space];
+			if (settings::show_ray_dirs) {
+				glEnd();
+				glBegin(GL_LINE_STRIP);
+				glColor4f(1, 1, 1, .5);
+				p = visual->where(pt.pos);
+				v = visual->jacobi(pt.pos) * pt.dir;
+				glVertex2fv(value_ptr(p));
+				glVertex2fv(value_ptr(p + v));
+				glEnd();
+				glBegin(GL_LINE_STRIP);
+			}
 			auto traced = pt.space->trace(pt);
 			vec2 endpoint = traced.end.pos;
 			bool hit_a_thing = false;
@@ -525,9 +546,11 @@ void render() {
 			glVertex2fv(value_ptr(visual->where(pt.pos)));
 			glVertex2fv(value_ptr(p));
 			if (hit_a_thing) {
-				glColor3f(1, 1, 0);
-				glVertex2fv(value_ptr(p));
-				glVertex2fv(value_ptr(p + .5f * v));
+				if (settings::show_term_dirs) {
+					glColor3f(1, 1, 0);
+					glVertex2fv(value_ptr(p));
+					glVertex2fv(value_ptr(p + .5f * v));
+				}
 				break;
 			}
 			glVertex2fv(value_ptr(p));
@@ -537,7 +560,7 @@ void render() {
 				glVertex2fv(value_ptr(p + 50.f * v));
 				break;
 			}
-			if (n++ > 10) {
+			if (n++ > settings::trace_limit) {
 				glColor3f(1, 0, 0);
 				glVertex2fv(value_ptr(p));
 				glVertex2fv(value_ptr(p + 1.f * v));
@@ -550,17 +573,6 @@ void render() {
 	double rtt2 = glfwGetTime();
 	rt_time += rtt2 - rtt1;
 
-	vec4 colors[] = {
-		{.2, .2, .2, .75},
-		{.8, .2, .2, .75},
-		{.2, .8, .2, .75},
-		{.8, .8, .2, .75},
-		{.2, .2, .8, .75},
-		{.8, .2, .8, .75},
-		{.2, .8, .8, .75},
-		{.8, .8, .8, .75},
-	};
-	int k = 0;
 	int M = 30;
 	for (auto *bnd: uni.thingySpaces) {
 		auto &&visual = visuals.at(bnd);
