@@ -36,11 +36,20 @@ struct Coefs {
 	float x0, y0, w;
 
 	Coefs(Params const &params) {
+		static constexpr float eps = 1e-3;
+
 		x2 = params.inner_half_length;
 		y2 = params.outer_half_length;
 		x1 = params.inner_half_length - params.inner_pad;
 
-		// TODO исправить неустойчивость при y2 ≈ x2
+		if (y2 - x2 < eps) {
+			if (y2 - x2 < -eps)
+				throw "Invalid channel properties";
+			x1 = y1 = x2 = y2;
+			x0 = y0 = w = std::numeric_limits<float>::signaling_NaN();
+			return;
+		}
+
 		y1 = x1 * (x1 - x2 + 2*y2) / (x1 + x2);
 		x0 = 0.5 * (sqr(x2) + sqr(x1) - 2 * x2 * y2) / (x2 - y2);
 		y0 = y2 - 0.25 * (sqr(x2) - sqr(x1)) / (x2 - y2);
