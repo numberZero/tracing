@@ -307,7 +307,12 @@ public:
 	}
 };
 
-class Sphere: public Thing {
+class PreviewableThing: public Thing {
+public:
+	virtual void preview(SpaceVisual const *visual) const = 0;
+};
+
+class Sphere: public PreviewableThing {
 public:
 	float radius;
 
@@ -338,6 +343,16 @@ public:
 
 	float getRadius() const noexcept final override {
 		return 2.0f * radius; // Только для тестирования; на самом деле `return radius` вполне подошёл бы.
+	}
+
+	void preview(SpaceVisual const *visual) const override {
+		static const int M = 12;
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex2fv(value_ptr(visual->where(loc.pos + radius * vec2(cos(phi), sin(phi)))));
+		}
+		glEnd();
 	}
 };
 
@@ -490,14 +505,10 @@ void render() {
 		}
 	}
 	glColor4f(.8, .8, .8, .75);
-	for (auto &&thing: spheres) {
-		auto &&visual = visuals.at(thing.loc.space);
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex2fv(value_ptr(visual->where(thing.loc.pos + thing.radius * vec2(cos(phi), sin(phi)))));
-		}
-		glEnd();
+	for (auto *thing: uni.things) {
+		auto &&visual = visuals.at(thing->loc.space);
+		if (auto p = dynamic_cast<PreviewableThing *>(thing))
+			p->preview(visual.get());
 	}
 
 	glBegin(GL_LINE_LOOP);
