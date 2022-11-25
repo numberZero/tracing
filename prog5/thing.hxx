@@ -22,6 +22,7 @@ public:
 	virtual float hit(Ray ray) const = 0;
 	virtual float getRadius() const noexcept = 0;
 	void move(vec2 off);
+	void rotate(mat2 rot);
 };
 
 struct ThingInfo {
@@ -99,6 +100,7 @@ public:
 	}
 };
 
+/// Сдвигает объект на @p off, в координатах объекта
 inline void Thing::move(vec2 off) {
 	loc.pos += loc.rot * off;
 	while (!loc.space->boundary->contains(loc.pos)) {
@@ -111,4 +113,10 @@ inline void Thing::move(vec2 off) {
 			throw "Oops! A thing is destroyed by the space curvature";
 		}
 	}
+}
+
+/// Доворачивает объект на @p rot, в координатах объекта
+inline void Thing::rotate(mat2 rot)
+{
+	loc.rot *= rot;
 }

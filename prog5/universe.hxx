@@ -24,7 +24,7 @@ private:
 			if (auto flat = dynamic_cast<ThingySubspace *>(over.into)) {
 				flat->things.push_back({thing, over.intoPos, thing->loc.rot * over.jacobi, radius});
 			} else {
-				throw "Oops! A thing is destroyed by the space curvature";
+// 				throw "Oops! A thing is destroyed by the space curvature";
 			}
 		}
 	}

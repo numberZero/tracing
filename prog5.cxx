@@ -497,18 +497,57 @@ namespace settings {
 	int trace_limit = 10;
 	bool show_term_dirs = true;
 	bool show_ray_dirs = false;
-	enum {
-		MoveThings,
-		ScaleSpace,
-	} mode = ScaleSpace;
+	bool show_sun = true;
+	bool show_frame = true;
+
+	float movement_speed = 6.0f;
+	float rotation_speed = 2.5f;
 }
 
-void render() {
+bool scale_space = false;
+vec2 sun;
+
+mat2 rotate(float angle) {
+	float s = std::sin(angle), c = std::cos(angle);
+	return {c, s, -s, c};
+}
+
+void update(GLFWwindow *wnd) {
 	static double t0 = 0.0;
 	double t = active ? glfwGetTime() - t_offset : t_frozen;
 	float dt = active ? t - t0 : 0.0;
 	t0 = t;
 
+	float mov = 0.0f;
+	float rot = 0.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_LEFT) == GLFW_PRESS) rot += 1.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_RIGHT) == GLFW_PRESS) rot -= 1.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) mov += 1.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) mov -= 1.0f;
+
+	polys[0].rotate(rotate(dt * settings::rotation_speed * rot));
+	auto loc = polys[0].loc;
+	try {
+		polys[0].move(dt * vec2(0.0f, settings::movement_speed * mov));
+	} catch (char const *) {
+		polys[0].loc = loc;
+	}
+
+	if (scale_space) {
+		static float x = 1.0f;
+		static float v = 0.0f;
+		v -= dt * omega * omega * x;
+		x += dt * v;
+		uni.params.inner_half_length = 3.0f + 2.0f * x;
+		uni.params.inner_pad = 0.25f * uni.params.inner_half_length;
+	}
+	uni.updateCaches();
+
+	float theta = .3 * t;
+	sun = 8.0f * vec2(cos(theta), sin(theta));
+}
+
+void render() {
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
 		{&uni.outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 1.0f})},
@@ -516,85 +555,81 @@ void render() {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	switch (settings::mode) {
-	case settings::MoveThings:
-		for (auto &thing: uni.things)
-			thing->move(dt * vec2(0.0f, A * omega * sin(omega * t)));
-		break;
-
-	case settings::ScaleSpace:
-		uni.params.inner_half_length = 3.0f + 2.0f * std::sin(t);
-		uni.params.inner_pad = 0.25f * uni.params.inner_half_length;
-		break;
-	}
-	uni.updateCaches();
-
-	double rtt1 = glfwGetTime();
-	float theta = .3 * t;
-	int N = settings::rays / 2;;
-	for (int k = -N; k < N; k++) {
-		float phi = (.5 + k) * (M_PI / N);
-		TrackPoint pt;
-		pt.pos = 8.0f * vec2(cos(theta), sin(theta));
-		pt.dir = vec2(cos(phi), sin(phi));
-		pt.space = &uni.outer;
-		int n = 0;
-		vec2 p, v;
-		glBegin(GL_LINE_STRIP);
-		for (;;) {
-			auto visual = visuals[pt.space];
-			if (settings::show_ray_dirs) {
-				glEnd();
-				glBegin(GL_LINE_STRIP);
-				glColor4f(1, 1, 1, .5);
-				p = visual->where(pt.pos);
-				v = visual->jacobi(pt.pos) * pt.dir;
-				glVertex2fv(value_ptr(p));
-				glVertex2fv(value_ptr(p + v));
-				glEnd();
-				glBegin(GL_LINE_STRIP);
-			}
-			auto traced = pt.space->trace(pt);
-			vec2 endpoint = traced.end.pos;
-			bool hit_a_thing = false;
-			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
-				if (auto t = flat->traceToThing(pt); t.thing) {
-					hit_a_thing = true;
-					endpoint = t.incident.pos;
-				}
-			}
-			p = visual->where(endpoint);
-			v = visual->jacobi(endpoint) * pt.dir;
-			glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
-			glVertex2fv(value_ptr(visual->where(pt.pos)));
-			glVertex2fv(value_ptr(p));
-			if (hit_a_thing) {
-				if (settings::show_term_dirs) {
-					glColor3f(1, 1, 0);
+	if (settings::show_sun) {
+		double rtt1 = glfwGetTime();
+		int N = settings::rays / 2;;
+		for (int k = -N; k < N; k++) {
+			float phi = (.5 + k) * (M_PI / N);
+			TrackPoint pt;
+			pt.pos = sun;
+			pt.dir = vec2(cos(phi), sin(phi));
+			pt.space = &uni.outer;
+			int n = 0;
+			vec2 p, v;
+			glBegin(GL_LINE_STRIP);
+			for (;;) {
+				auto visual = visuals[pt.space];
+				if (settings::show_ray_dirs) {
+					glEnd();
+					glBegin(GL_LINE_STRIP);
+					glColor4f(1, 1, 1, .5);
+					p = visual->where(pt.pos);
+					v = visual->jacobi(pt.pos) * pt.dir;
 					glVertex2fv(value_ptr(p));
-					glVertex2fv(value_ptr(p + .5f * v));
+					glVertex2fv(value_ptr(p + v));
+					glEnd();
+					glBegin(GL_LINE_STRIP);
 				}
-				break;
-			}
-			glVertex2fv(value_ptr(p));
-			if (traced.to.space) {
-				pt = traced.to;
-			} else {
-				glVertex2fv(value_ptr(p + 50.f * v));
-				break;
-			}
-			if (n++ > settings::trace_limit) {
-				glColor3f(1, 0, 0);
+				auto traced = pt.space->trace(pt);
+				vec2 endpoint = traced.end.pos;
+				bool hit_a_thing = false;
+				if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
+					if (auto t = flat->traceToThing(pt); t.thing) {
+						hit_a_thing = true;
+						endpoint = t.incident.pos;
+// 						pt = TrackPoint{Ray{
+// 								t.thing->loc.pos + t.thing->loc.rot * t.thingspace_incident.pos,
+// 								t.thing->loc.rot * t.thingspace_incident.dir,
+// 							},
+// 							t.thing->loc.space,
+// 						};
+// 						visual = visuals[pt.space];
+// 						endpoint = pt.pos;
+					}
+				}
+				p = visual->where(endpoint);
+				v = visual->jacobi(endpoint) * pt.dir;
+				glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
+				glVertex2fv(value_ptr(visual->where(pt.pos)));
 				glVertex2fv(value_ptr(p));
-				glVertex2fv(value_ptr(p + 1.f * v));
-				break;
+				if (hit_a_thing) {
+					if (settings::show_term_dirs) {
+						glColor3f(1, 1, 0);
+						glVertex2fv(value_ptr(p));
+						glVertex2fv(value_ptr(p + .5f * v));
+					}
+					break;
+				}
+				glVertex2fv(value_ptr(p));
+				if (traced.to.space) {
+					pt = traced.to;
+				} else {
+					glVertex2fv(value_ptr(p + 50.f * v));
+					break;
+				}
+				if (n++ > settings::trace_limit) {
+					glColor3f(1, 0, 0);
+					glVertex2fv(value_ptr(p));
+					glVertex2fv(value_ptr(p + 1.f * v));
+					break;
+				}
 			}
+			glEnd();
+			rt_rays++;
 		}
-		glEnd();
-		rt_rays++;
+		double rtt2 = glfwGetTime();
+		rt_time += rtt2 - rtt1;
 	}
-	double rtt2 = glfwGetTime();
-	rt_time += rtt2 - rtt1;
 
 	int M = 30;
 	for (auto *bnd: uni.thingySpaces) {
@@ -616,25 +651,27 @@ void render() {
 			p->preview(visual.get());
 	}
 
-	glBegin(GL_LINE_LOOP);
-	glColor3f(.0f, .9f, .9f);
-	glVertex2f(-uni.params.outer_half_length, -uni.params.outer_radius);
-	glVertex2f(-uni.params.outer_half_length, uni.params.outer_radius);
-	glVertex2f(uni.params.outer_half_length, uni.params.outer_radius);
-	glVertex2f(uni.params.outer_half_length, -uni.params.outer_radius);
-	glEnd();
-	glBegin(GL_LINES);
-	glColor3f(.0f, .2f, .7f);
-	glVertex2f(-uni.params.outer_half_length, -uni.params.inner_radius);
-	glVertex2f(uni.params.outer_half_length, -uni.params.inner_radius);
-	glVertex2f(-uni.params.outer_half_length, uni.params.inner_radius);
-	glVertex2f(uni.params.outer_half_length, uni.params.inner_radius);
-	Coefs cs(uni.params);
-	glVertex2f(-cs.y1, -uni.params.outer_radius);
-	glVertex2f(-cs.y1, uni.params.outer_radius);
-	glVertex2f(cs.y1, uni.params.outer_radius);
-	glVertex2f(cs.y1, -uni.params.outer_radius);
-	glEnd();
+	if (settings::show_frame) {
+		glBegin(GL_LINE_LOOP);
+		glColor3f(.0f, .9f, .9f);
+		glVertex2f(-uni.params.outer_half_length, -uni.params.outer_radius);
+		glVertex2f(-uni.params.outer_half_length, uni.params.outer_radius);
+		glVertex2f(uni.params.outer_half_length, uni.params.outer_radius);
+		glVertex2f(uni.params.outer_half_length, -uni.params.outer_radius);
+		glEnd();
+		glBegin(GL_LINES);
+		glColor3f(.0f, .2f, .7f);
+		glVertex2f(-uni.params.outer_half_length, -uni.params.inner_radius);
+		glVertex2f(uni.params.outer_half_length, -uni.params.inner_radius);
+		glVertex2f(-uni.params.outer_half_length, uni.params.inner_radius);
+		glVertex2f(uni.params.outer_half_length, uni.params.inner_radius);
+		Coefs cs(uni.params);
+		glVertex2f(-cs.y1, -uni.params.outer_radius);
+		glVertex2f(-cs.y1, uni.params.outer_radius);
+		glVertex2f(cs.y1, uni.params.outer_radius);
+		glVertex2f(cs.y1, -uni.params.outer_radius);
+		glEnd();
+	}
 }
 
 float background_lightness = 0.1;
@@ -769,6 +806,10 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		background_lightness = 1.0f - background_lightness;
 		paint(window);
 	}
+	if (key == GLFW_KEY_S)
+		settings::show_sun = !settings::show_sun;
+	if (key == GLFW_KEY_F)
+		settings::show_frame = !settings::show_frame;
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
@@ -805,6 +846,7 @@ int main() {
 	while (!glfwWindowShouldClose(wnd)) {
 		if (active) {
 			glfwPollEvents();
+			update(wnd);
 			paint(wnd);
 			double t1 = glfwGetTime();
 			if (t1 - t0 >= 1.0) {
