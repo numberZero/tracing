@@ -496,10 +496,12 @@ void init() {
 namespace settings {
 	int rays = 120;
 	int trace_limit = 10;
-	bool show_term_dirs = true;
+	bool show_term_dirs = false;
 	bool show_ray_dirs = false;
 	bool show_sun = true;
 	bool show_frame = true;
+	bool show_thing_frame = false;
+	bool relative_display = true;
 
 	float movement_acceleration = 6.0f;
 	float rotation_speed = 2.5f;
@@ -547,7 +549,12 @@ void update(GLFWwindow *wnd) {
 		uni.params.inner_half_length = 3.0f + 2.0f * x;
 		uni.params.inner_pad = 0.25f * uni.params.inner_half_length;
 	}
-	uni.updateCaches();
+	try {
+		uni.updateCaches();
+	} catch (char const *) {
+		me->loc = loc;
+		v = {};
+	}
 
 	float theta = .3 * t;
 	sun = 8.0f * vec2(cos(theta), sin(theta));
@@ -560,6 +567,14 @@ void render() {
 		{&uni.channel, make_shared<ChannelVisual>(vec3{0.4f, 1.0f, 0.1f}, uni.params)},
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
+
+	if (settings::relative_display) {
+		auto &&visual = visuals.at(me->loc.space);
+		vec2 off = visual->where(me->loc.pos);
+		mat4 rmat = transpose(me->loc.rot) * inverse(visual->jacobi(me->loc.pos));
+		glMultMatrixf(value_ptr(rmat));
+		glTranslatef(-off.x, -off.y, 0.0f);
+	}
 
 	if (settings::show_sun) {
 		double rtt1 = glfwGetTime();
@@ -637,19 +652,22 @@ void render() {
 		rt_time += rtt2 - rtt1;
 	}
 
-	int M = 30;
-	for (auto *bnd: uni.thingySpaces) {
-		auto &&visual = visuals.at(bnd);
-		for (auto &&info: bnd->things) {
-			glColor3fv(value_ptr(visual->color));
-			glBegin(GL_LINE_LOOP);
-			for (int k = -M; k < M; k++) {
-				float phi = (.5 + k) * (M_PI / M);
-				glVertex2fv(value_ptr(visual->where(info.pos + info.radius * vec2(cos(phi), sin(phi)))));
+	if (settings::show_thing_frame) {
+		int M = 30;
+		for (auto *bnd: uni.thingySpaces) {
+			auto &&visual = visuals.at(bnd);
+			for (auto &&info: bnd->things) {
+				glColor3fv(value_ptr(visual->color));
+				glBegin(GL_LINE_LOOP);
+				for (int k = -M; k < M; k++) {
+					float phi = (.5 + k) * (M_PI / M);
+					glVertex2fv(value_ptr(visual->where(info.pos + info.radius * vec2(cos(phi), sin(phi)))));
+				}
+				glEnd();
 			}
-			glEnd();
 		}
 	}
+
 	glColor4f(.8, .8, .8, .75);
 	for (auto *thing: uni.things) {
 		auto &&visual = visuals.at(thing->loc.space);
@@ -816,6 +834,8 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		settings::show_sun = !settings::show_sun;
 	if (key == GLFW_KEY_F)
 		settings::show_frame = !settings::show_frame;
+	if (key == GLFW_KEY_R)
+		settings::relative_display = !settings::relative_display;
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
