@@ -89,3 +89,7 @@ inline static uint32_t next_pow2(uint32_t v) {
 	v++;
 	return v;
 }
+
+inline static vec2 cross(vec2 v) {
+	return {-v.y, v.x};
+}

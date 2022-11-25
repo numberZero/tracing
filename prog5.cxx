@@ -5,6 +5,7 @@
 #include <limits>
 #include <unordered_map>
 #include <vector>
+#include <asyncpp/generator.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <GLFW/glfw3.h>
@@ -356,6 +357,64 @@ public:
 	}
 };
 
+asyncpp::generator<std::pair<vec2, vec2>> edges(std::vector<vec2> const &points) {
+	vec2 a = points.back();
+	for (vec2 b: points) {
+		co_yield {a, b};
+		a = b;
+	}
+}
+
+class Polygon: public PreviewableThing {
+public:
+	Polygon(std::vector<vec2> _points, ThingySubspace const *space, vec2 pos) {
+		loc = {
+			space,
+			pos,
+			mat2(1.0f),
+		};
+		points = std::move(_points);
+		assert(points.size() >= 3);
+		for (vec2 p: points)
+			radius = max(radius, length(p));
+	}
+
+	float hit(Ray ray) const override {
+		vec2 ray_left = cross(ray.dir);
+		float min_dist = std::numeric_limits<float>::infinity();
+		for (auto [a, b]: edges(points)) {
+			vec2 rel_a = a - ray.pos;
+			vec2 rel_b = b - ray.pos;
+			if (dot(ray_left, rel_a) >= 0.0f && dot(ray_left, rel_b) <= 0.0f) {
+				vec2 side_tangent = b - a;
+				vec2 side_normal = cross(side_tangent);
+				float k = -determinant(mat2(a, b));
+				float dist = (k - dot(ray.pos, side_normal)) / dot(ray.dir, side_normal);
+				if (dist >= 0.0f)
+					min_dist = min(min_dist, dist); // Для выпуклого контура можно было бы сразу `return dist`.
+			}
+			a = b;
+		}
+		return min_dist;
+	}
+
+	float getRadius() const noexcept final override {
+		return radius;
+	}
+
+	void preview(SpaceVisual const *visual) const override {
+		glBegin(GL_LINE_LOOP);
+		for (vec2 p: points)
+			glVertex2fv(value_ptr(visual->where(loc.pos + p)));
+		glEnd();
+	}
+
+private:
+	std::vector<vec2> points;
+
+	float radius = 0.0f;
+};
+
 using std::shared_ptr, std::make_shared;
 
 double t_frozen = 0.0;
@@ -397,16 +456,19 @@ MyUniverse uni;
 const float off = .5f * uni.params.outer_half_length;
 const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
-const float thing_radius = 0.25f;
 Sphere spheres[] = {
 	{0.15f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f}},
 	{0.45f, &uni.outer, {-(uni.params.outer_half_length + off), 0.5f}},
-	{0.25f, &uni.outer, {-A, uni.params.outer_radius + off}},
+};
+Polygon polys[] = {
+	{{{-.3f, -.3f}, {0.f, -.2f}, {.3f, -.3f}, {.0f, .3f}}, &uni.outer, {-A, uni.params.outer_radius + off}},
 };
 
 void init() {
 	for (auto &sphere: spheres)
 		uni.things.push_back(&sphere);
+	for (auto &th: polys)
+		uni.things.push_back(&th);
 }
 
 void render() {
@@ -422,8 +484,8 @@ void render() {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	for (auto &thing: spheres)
-		thing.move(dt * vec2(A * omega * sin(omega * t), 0.0f));
+	for (auto &thing: uni.things)
+		thing->move(dt * vec2(A * omega * sin(omega * t), 0.0f));
 	uni.updateCaches();
 
 	double rtt1 = glfwGetTime();
