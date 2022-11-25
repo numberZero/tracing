@@ -482,6 +482,7 @@ Polygon polys[] = {
 	{{{-a, -a}, {0.f, -0.500f * a}, {a, -a}, {0.f, 1.414f * a}}, &uni.outer, {-(uni.params.outer_half_length + off), -1.0f}},
 	{{{-a, -a}, {0.f, -0.500f * a}, {a, -a}, {0.f, 1.414f * a}}, &uni.outer, {-A, uni.params.outer_radius + off}},
 };
+Thing *me = &polys[0];
 
 void init() {
 	for (auto &sphere: spheres)
@@ -500,7 +501,7 @@ namespace settings {
 	bool show_sun = true;
 	bool show_frame = true;
 
-	float movement_speed = 6.0f;
+	float movement_acceleration = 6.0f;
 	float rotation_speed = 2.5f;
 }
 
@@ -520,17 +521,22 @@ void update(GLFWwindow *wnd) {
 
 	float mov = 0.0f;
 	float rot = 0.0f;
+	static vec2 v = {0.0f, 0.0f};
 	if (glfwGetKey(wnd, GLFW_KEY_LEFT) == GLFW_PRESS) rot += 1.0f;
 	if (glfwGetKey(wnd, GLFW_KEY_RIGHT) == GLFW_PRESS) rot -= 1.0f;
 	if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) mov += 1.0f;
 	if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) mov -= 1.0f;
 
-	polys[0].rotate(rotate(dt * settings::rotation_speed * rot));
-	auto loc = polys[0].loc;
+	v += dt * settings::movement_acceleration * vec2(0.0f, mov);
+	mat2 rmat = rotate(dt * settings::rotation_speed * rot);
+	v = transpose(rmat) * v;
+	me->rotate(rmat);
+	auto loc = me->loc;
 	try {
-		polys[0].move(dt * vec2(0.0f, settings::movement_speed * mov));
+		me->move(dt * v);
 	} catch (char const *) {
-		polys[0].loc = loc;
+		me->loc = loc;
+		v = {};
 	}
 
 	if (scale_space) {
