@@ -413,7 +413,7 @@ public:
 	void preview(SpaceVisual const *visual) const override {
 		glBegin(GL_LINE_LOOP);
 		for (vec2 p: points)
-			glVertex2fv(value_ptr(visual->where(loc.pos + p)));
+			glVertex2fv(value_ptr(visual->where(loc.pos + loc.rot * p)));
 		glEnd();
 	}
 

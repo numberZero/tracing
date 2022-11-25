@@ -27,12 +27,14 @@ public:
 struct ThingInfo {
 	Thing const *thing;
 	vec2 pos;
+	mat2 rot;
 	float radius;
 };
 
 struct ThingTraceResult {
 	Thing const *thing = nullptr;
 	Ray incident;
+	Ray thingspace_incident;
 	float distance;
 };
 
@@ -71,13 +73,15 @@ public:
 		Transition t = boundary->findBoundary(ray);
 		float max_dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
 		for (auto &&info: findThingsOnRay(ray)) {
-			const float dist = info.thing->hit({ray.pos - info.pos, ray.dir});
+			const mat2 rot = transpose(info.rot);
+			const float dist = info.thing->hit({rot * (ray.pos - info.pos), rot * ray.dir});
 			if (dist < max_dist) {
 				max_dist = dist;
 				const vec2 pos = ray.pos + dist * ray.dir;
 				result = {
 					.thing = info.thing,
 					.incident = {pos, ray.dir},
+					.thingspace_incident = {rot * (pos - info.pos), rot * ray.dir},
 					.distance = dist,
 				};
 			}
@@ -96,12 +100,13 @@ public:
 };
 
 inline void Thing::move(vec2 off) {
-	loc.pos += off;
+	loc.pos += loc.rot * off;
 	while (!loc.space->boundary->contains(loc.pos)) {
 		auto next = loc.space->boundary->leave({loc.pos, off});
 		if (auto flat = dynamic_cast<ThingySubspace *>(next.into)) {
 			loc.space = flat;
 			loc.pos = next.intoPos;
+			loc.rot = next.jacobi * loc.rot;
 		} else {
 			throw "Oops! A thing is destroyed by the space curvature";
 		}
