@@ -705,16 +705,11 @@ void render() {
 
 float background_lightness = 0.1;
 
-int width, height;
 float winsize;
-GLuint fbs[2] = {0, 0};
-GLuint bb = 0;
-GLuint mb = 0;
 
 int frames = 0;
 
 void paint(GLFWwindow* window) {
-	glBindFramebuffer(GL_FRAMEBUFFER, fbs[0]);
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -735,31 +730,14 @@ void paint(GLFWwindow* window) {
 	glPushMatrix();
 	glLoadIdentity();
 
-	glDisable(GL_MULTISAMPLE);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbs[1]);
-	glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-	glClearColor(background_lightness, background_lightness, background_lightness, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-
-	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, mb);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+	glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_ONE);
+	glColor4f(background_lightness, background_lightness, background_lightness, 1.0f);
 	glBegin(GL_QUADS);
-	glTexCoord2f(0.0f, 0.0f);
 	glVertex2f(-1.0f, -1.0f);
-	glTexCoord2f(1.0f, 0.0f);
 	glVertex2f(1.0f, -1.0f);
-	glTexCoord2f(1.0f, 1.0f);
 	glVertex2f(1.0f, 1.0f);
-	glTexCoord2f(0.0f, 1.0f);
 	glVertex2f(-1.0f, 1.0f);
 	glEnd();
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glDisable(GL_TEXTURE_2D);
 
 	glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);
@@ -769,28 +747,15 @@ void paint(GLFWwindow* window) {
 }
 
 void initGL() {
-	glCreateFramebuffers(2, fbs);
 }
 
 void resized(GLFWwindow* window, int width, int height) {
-	::width = width;
-	::height = height;
 	glViewport(0, 0, width, height);
 	::winsize = sqrt(width * height / 2) / 4;
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glScalef(winsize / width, winsize / height, 1.0);
 	glMatrixMode(GL_MODELVIEW);
-	if (bb) {
-		glDeleteTextures(1, &bb);
-		glDeleteTextures(1, &mb);
-	}
-	glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, 1, &bb);
-	glCreateTextures(GL_TEXTURE_2D, 1, &mb);
-	glTextureStorage2DMultisample(bb, 8, GL_RGBA8, width, height, GL_FALSE);
-	glTextureStorage2D(mb, 1, GL_RGBA8, width, height);
-	glNamedFramebufferTexture(fbs[0], GL_COLOR_ATTACHMENT0, bb, 0);
-	glNamedFramebufferTexture(fbs[1], GL_COLOR_ATTACHMENT0, mb, 0);
 }
 
 static const char *title = "Space Refraction 2D v2";
@@ -857,6 +822,7 @@ int main() {
 	glfwInit();
 	glfwWindowHint(GLFW_ALPHA_BITS, 8);
 	glfwWindowHint(GLFW_DEPTH_BITS, 0);
+	glfwWindowHint(GLFW_SAMPLES, 8);
 	glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_TRUE);
 	glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
