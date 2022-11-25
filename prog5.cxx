@@ -81,7 +81,7 @@ public:
 				assert(abs(pos.x) >= params.outer_half_length);
 				vec2 into = pos;
 				into.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
-				overlaps.push_back({channel, pos, into, mat2(1)});
+				overlaps.push_back({channel, pos, cross(into), mat2(0, 1, -1, 0)});
 			}
 			if (abs(pos.y) + max_distance >= params.inner_radius) {
 				overlaps.push_back({side, pos, pos, mat2(1)});
@@ -100,7 +100,7 @@ public:
 		if (abs(pos.y) < params.inner_radius) {
 			vec2 into = pos;
 			into.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			return {channel, pos, into, mat2(1)};
+			return {channel, pos, cross(into), mat2(0, 1, -1, 0)};
 		} else {
 			return {side, pos, pos, mat2(1)};
 		}
@@ -114,6 +114,8 @@ public:
 	Subspace *side;
 
 	BoundaryPoint findBoundary(Ray from) const override {
+		from.pos = -cross(from.pos);
+		from.dir = -cross(from.dir);
 		const vec2 radius = {params.inner_half_length, params.inner_radius};
 		const vec2 d = sign(from.dir) * radius - from.pos;
 		const vec2 dist = d / from.dir;
@@ -125,7 +127,7 @@ public:
 
 		if (dist_outer <= dist_side) {
 			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			return {{outer, pos, into, mat2(1)}, dist_outer};
+			return {{outer, cross(pos), into, mat2(0, -1, 1, 0)}, dist_outer};
 		} else {
 			Coefs cs(params);
 			float m = 1.0f;
@@ -138,16 +140,17 @@ public:
 			} else {
 				into.x += copysign(cs.y2 - cs.x2, pos.x);
 			}
-			return {{side, pos, into, diagonal(m, 1)}, dist_side};
+			return {{side, cross(pos), into, mat2(0, -1, 1, 0) * diagonal(m, 1)}, dist_side};
 		}
 	}
 
 	std::vector<Transition> findOverlaps(vec2 pos, float max_distance) const override {
+		pos = -cross(pos);
 		std::vector<Transition> overlaps;
 		if (abs(pos.x) + max_distance >= params.inner_half_length) {
 			vec2 into = pos;
 			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			overlaps.push_back({outer, pos, into, mat2(1)});
+			overlaps.push_back({outer, cross(pos), into, mat2(0, -1, 1, 0)});
 		}
 		if (abs(pos.y) + max_distance >= params.inner_radius) {
 			Coefs cs(params);
@@ -162,24 +165,27 @@ public:
 			} else {
 				into.x += copysign(cs.y2 - cs.x2, pos.x);
 			}
-			overlaps.push_back({side, pos, into, diagonal(m, 1)});
+			overlaps.push_back({side, cross(pos), into, mat2(0, -1, 1, 0) * diagonal(m, 1)});
 		}
 		return overlaps;
 	}
 
 	bool contains(vec2 point) const override {
+		point = -cross(point);
 		const vec2 radius = {params.inner_half_length, params.inner_radius};
 		return all(lessThan(abs(point), radius));
 	}
 
 	Transition leave(Ray at) const override {
+		at.pos = -cross(at.pos);
+		at.dir = -cross(at.dir);
 		const vec2 radius = {params.inner_half_length, params.inner_radius};
 		const vec2 pos = at.pos;
 		vec2 into = pos;
 
 		if (any(lessThanEqual(abs(pos), radius))) {
 			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			return {outer, pos, into, mat2(1)};
+			return {outer, cross(pos), into, mat2(0, -1, 1, 0)};
 		} else {
 			Coefs cs(params);
 			float m = 1.0f;
@@ -192,7 +198,7 @@ public:
 			} else {
 				into.x += copysign(cs.y2 - cs.x2, pos.x);
 			}
-			return {side, pos, into, diagonal(m, 1)};
+			return {side, cross(pos), into, mat2(0, -1, 1, 0) * diagonal(m, 1)};
 		}
 	}
 };
@@ -254,7 +260,7 @@ public:
 			pos.x -= copysign(cs.y2 - cs.x2, pos.x);
 		}
 		debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
-		return {channel, at.pos, pos, diagonal(m, 1.0f)};
+		return {channel, at.pos, cross(pos), diagonal(m, 1.0f) * mat2(0, 1, -1, 0)};
 	}
 };
 
@@ -285,6 +291,7 @@ public:
 	Params params;
 
 	vec2 where(vec2 pos) const override {
+		pos = -cross(pos);
 		Coefs cs(params);
 		if (abs(pos.x) < cs.x1) {
 			pos.x *= cs.y1 / cs.x1;
@@ -297,13 +304,14 @@ public:
 	}
 
 	mat2 jacobi(vec2 pos) const override {
+		pos = -cross(pos);
 		Coefs cs(params);
 		if (abs(pos.x) < cs.x1) {
-			return diagonal(cs.y1 / cs.x1, 1.0f);
+			return diagonal(cs.y1 / cs.x1, 1.0f) * mat2(0, -1, 1, 0);
 		} else if (abs(pos.x) < cs.x2) {
-			return diagonal(2 * cs.w * (abs(pos.x) - cs.x0), 1.0f);
+			return diagonal(2 * cs.w * (abs(pos.x) - cs.x0), 1.0f) * mat2(0, -1, 1, 0);
 		} else {
-			return mat2(1.0f);
+			return mat2(1.0f) * mat2(0, -1, 1, 0);
 		}
 	}
 };
