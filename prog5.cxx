@@ -52,9 +52,11 @@ static constexpr float eps = 1e-4;
 
 class InwardsBoundary final: public SubspaceBoundaryEx {
 public:
-	Params params;
+	Params const &params;
 	Subspace *side;
 	Subspace *channel;
+
+	InwardsBoundary(Params &_params): params(_params) {}
 
 	BoundaryPoint findBoundary(Ray from) const override {
 		const vec2 radius = {params.outer_half_length, params.outer_radius};
@@ -109,9 +111,11 @@ public:
 
 class ChannelBoundary final: public SubspaceBoundaryEx {
 public:
-	Params params;
+	Params const &params;
 	Subspace *outer;
 	Subspace *side;
+
+	ChannelBoundary(Params &_params): params(_params) {}
 
 	BoundaryPoint findBoundary(Ray from) const override {
 		const vec2 radius = {params.inner_half_length, params.inner_radius};
@@ -199,7 +203,9 @@ public:
 
 class ChannelMetric: public RiemannMetric<2> {
 public:
-	Params params;
+	Params const &params;
+
+	ChannelMetric(Params &_params): params(_params) {}
 
 	decomp halfmetric(vec2 pos) const noexcept override {
 		Coefs cs(params);
@@ -216,6 +222,8 @@ public:
 };
 
 class ChannelSideMetric: public ChannelMetric {
+	using ChannelMetric::ChannelMetric;
+
 	decomp halfmetric(vec pos) const noexcept override {
 		auto g = ChannelMetric::halfmetric(pos);
 		float c = clamp((params.outer_radius - abs(pos.y)) / (params.outer_radius - params.inner_radius), 0.0f, 1.0f);
@@ -226,9 +234,11 @@ class ChannelSideMetric: public ChannelMetric {
 
 class SideBoundary: public SwitchMap {
 public:
-	Params params;
+	Params const &params;
 	Subspace *outer;
 	Subspace *channel;
+
+	SideBoundary(Params &_params): params(_params) {}
 
 	bool contains(vec2 point) const override {
 		return abs(point.x) <= params.outer_half_length + eps && abs(point.y) <= params.outer_radius + eps && abs(point.y) >= params.inner_radius - eps;
@@ -280,9 +290,9 @@ public:
 
 class ChannelVisual: public SpaceVisual {
 public:
-	using SpaceVisual::SpaceVisual;
+	Params const &params;
 
-	Params params;
+	ChannelVisual(vec3 color, Params &_params): SpaceVisual(color), params(_params) {}
 
 	vec2 where(vec2 pos) const override {
 		Coefs cs(params);
@@ -425,13 +435,12 @@ int rt_rays = 0;
 class MyUniverse: public Universe {
 public:
 	Params params;
-	Coefs cs{params};
 	ThingySubspace outer, channel;
 	RiemannSubspace side;
-	ChannelSideMetric side_metric;
-	SideBoundary sbnd;
-	InwardsBoundary ibnd;
-	ChannelBoundary cbnd;
+	ChannelSideMetric side_metric{params};
+	SideBoundary sbnd{params};
+	InwardsBoundary ibnd{params};
+	ChannelBoundary cbnd{params};
 
 public:
 	MyUniverse() {
@@ -490,7 +499,7 @@ void render() {
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
 		{&uni.outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 1.0f})},
-		{&uni.channel, make_shared<ChannelVisual>(vec3{0.4f, 1.0f, 0.1f})},
+		{&uni.channel, make_shared<ChannelVisual>(vec3{0.4f, 1.0f, 0.1f}, uni.params)},
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
@@ -598,10 +607,11 @@ void render() {
 	glVertex2f(uni.params.outer_half_length, -uni.params.inner_radius);
 	glVertex2f(-uni.params.outer_half_length, uni.params.inner_radius);
 	glVertex2f(uni.params.outer_half_length, uni.params.inner_radius);
-	glVertex2f(-uni.cs.y1, -uni.params.outer_radius);
-	glVertex2f(-uni.cs.y1, uni.params.outer_radius);
-	glVertex2f(uni.cs.y1, uni.params.outer_radius);
-	glVertex2f(uni.cs.y1, -uni.params.outer_radius);
+	Coefs cs(uni.params);
+	glVertex2f(-cs.y1, -uni.params.outer_radius);
+	glVertex2f(-cs.y1, uni.params.outer_radius);
+	glVertex2f(cs.y1, uni.params.outer_radius);
+	glVertex2f(cs.y1, -uni.params.outer_radius);
 	glEnd();
 }
 
