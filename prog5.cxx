@@ -497,6 +497,10 @@ namespace settings {
 	int trace_limit = 10;
 	bool show_term_dirs = true;
 	bool show_ray_dirs = false;
+	enum {
+		MoveThings,
+		ScaleSpace,
+	} mode = ScaleSpace;
 }
 
 void render() {
@@ -512,8 +516,17 @@ void render() {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
-	for (auto &thing: uni.things)
-		thing->move(dt * vec2(0.0f, A * omega * sin(omega * t)));
+	switch (settings::mode) {
+	case settings::MoveThings:
+		for (auto &thing: uni.things)
+			thing->move(dt * vec2(0.0f, A * omega * sin(omega * t)));
+		break;
+
+	case settings::ScaleSpace:
+		uni.params.inner_half_length = 3.0f + 2.0f * std::sin(t);
+		uni.params.inner_pad = 0.25f * uni.params.inner_half_length;
+		break;
+	}
 	uni.updateCaches();
 
 	double rtt1 = glfwGetTime();
