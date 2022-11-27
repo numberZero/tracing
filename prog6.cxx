@@ -390,22 +390,25 @@ vec3 dirToColor(vec3 dir) {
 	return .5f + .5f * v / max(abs(v));
 }
 
-/*
-class Polygon: public PreviewableThing {
+class Mesh: public PreviewableThing {
 public:
-	Polygon(std::vector<vec3> _points, ThingySubspace const *space, vec3 pos) {
+	Mesh(std::vector<vec3> _points, std::vector<ivec3> _tris, ThingySubspace const *space, vec3 pos) {
 		loc = {
 			space,
 			pos,
 			mat3(1.0f),
 		};
 		points = std::move(_points);
-		assert(points.size() >= 3);
+		tris = std::move(_tris);
+		assert(points.size() >= 4);
 		for (vec3 p: points)
 			radius = max(radius, length(p));
 	}
 
 	float hit(Ray ray) const override {
+		Sphere s{radius, loc.space, loc.pos};
+		return s.hit(ray);
+/*
 		vec3 ray_left = cross(ray.dir);
 		float min_dist = std::numeric_limits<float>::infinity();
 		for (auto [a, b]: edges(points)) {
@@ -422,6 +425,7 @@ public:
 			a = b;
 		}
 		return min_dist;
+*/
 	}
 
 	float getRadius() const noexcept final override {
@@ -429,18 +433,29 @@ public:
 	}
 
 	void preview(SpaceVisual const *visual) const override {
-		glBegin(GL_LINE_LOOP);
-		for (vec3 p: points)
-			glVertex2fv(value_ptr(visual->where(loc.pos + loc.rot * p)));
+		glEnable(GL_DEPTH_TEST);
+		glBegin(GL_TRIANGLES);
+		for (ivec3 tri: tris) {
+			vec3 a = loc.pos + loc.rot * points[tri.x];
+			vec3 b = loc.pos + loc.rot * points[tri.y];
+			vec3 c = loc.pos + loc.rot * points[tri.z];
+			vec3 n = normalize(cross(b - a, c - a));
+			glColor3fv(value_ptr(dirToColor(n)));
+			glVertex3fv(value_ptr(visual->where(a)));
+			glVertex3fv(value_ptr(visual->where(b)));
+			glVertex3fv(value_ptr(visual->where(c)));
+		}
 		glEnd();
+		glDisable(GL_DEPTH_TEST);
 	}
 
 private:
 	std::vector<vec3> points;
+	std::vector<ivec3> tris;
 
 	float radius = 0.0f;
 };
-*/
+
 using std::shared_ptr, std::make_shared;
 
 double t_frozen = 0.0;
@@ -487,18 +502,20 @@ Sphere spheres[] = {
 	{0.45f, &uni.outer, {-(uni.params.outer_half_length + off), 0.5f, 0.0f}},
 	{1.414f * a, &uni.outer, {-(uni.params.outer_half_length + off), -1.0f, 0.0f}},
 };
-// Polygon polys[] = {
-// 	{{{-a, -a}, {0.f, -0.500f * a}, {a, -a}, {0.f, 1.414f * a}}, &uni.outer, {-(uni.params.outer_half_length + off), -1.0f}},
+Mesh meshes[] = {
+	{{{-a, -a, 0.f}, {0.f, -0.500f * a, 0.f}, {a, -a, 0.f}, {0.f, 1.414f * a, 0.f}, {0.f, -a, -0.500f * a}, {0.f, -a, 0.500f * a}},
+	{{0, 5, 3}, {5, 2, 3}, {2, 4, 3}, {4, 0, 3}, {5, 0, 1}, {2, 5, 1}, {4, 2, 1}, {0, 4, 1}},
+	&uni.outer, {-(uni.params.outer_half_length + off), -1.0f, 0.0f}},
 // 	{{{-a, -a}, {0.f, -0.500f * a}, {a, -a}, {0.f, 1.414f * a}}, &uni.outer, {-A, uni.params.outer_radius + off}},
-// };
+};
 // Thing *me = &polys[0];
 Thing *me = &spheres[2];
 
 void init() {
 	for (auto &sphere: spheres)
 		uni.things.push_back(&sphere);
-// 	for (auto &th: polys)
-// 		uni.things.push_back(&th);
+	for (auto &th: meshes)
+		uni.things.push_back(&th);
 	for (auto &th: uni.things)
 		th->loc.rot = mat3(1.0f);
 }
@@ -748,7 +765,8 @@ int frames = 0;
 
 void paint(GLFWwindow* window) {
 	glClearColor(0.0, 0.0, 0.0, 0.0);
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_CULL_FACE);
 
 	glLineWidth(winsize * 0.0085);
 	glPointSize(winsize * 0.085);
@@ -853,7 +871,7 @@ int main() {
 	init();
 	glfwInit();
 	glfwWindowHint(GLFW_ALPHA_BITS, 8);
-	glfwWindowHint(GLFW_DEPTH_BITS, 0);
+	glfwWindowHint(GLFW_DEPTH_BITS, 16);
 	glfwWindowHint(GLFW_SAMPLES, 8);
 	glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_TRUE);
 	glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
