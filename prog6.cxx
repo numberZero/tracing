@@ -657,17 +657,20 @@ void render(GLFWwindow *wnd) {
 	ivec2 ipos;
 	double rtt1 = glfwGetTime();
 
-	glLoadIdentity();
-	glBegin(GL_POINTS);
+	std::vector<vec4> colors;
+	colors.resize(4 * ihalfsize.x * ihalfsize.y);
+
 	for (ipos.y = -ihalfsize.y; ipos.y < ihalfsize.y; ipos.y++)
 	for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
+		int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
 		vec2 spos = shape * wpos;
 		TrackPoint pt;
 		pt.pos = me->loc.pos;
 		pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
 		pt.space = me->loc.space;
-		vec4 color = {1, 0, 1, 1};
+		vec4 &color = colors[index];
+		color = {1, 0, 1, 1};
 		for (int n = 0; n < settings::trace_limit; n++) {
 			auto traced = pt.space->trace(pt);
 			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
@@ -683,13 +686,22 @@ void render(GLFWwindow *wnd) {
 				break;
 			}
 		}
-		glColor4fv(value_ptr(color));
-		glVertex2fv(value_ptr(wpos));
 		rt_rays++;
 	}
-	glEnd();
 	double rtt2 = glfwGetTime();
 	rt_time += rtt2 - rtt1;
+
+	glLoadIdentity();
+	glBegin(GL_POINTS);
+	for (ipos.y = -ihalfsize.y; ipos.y < ihalfsize.y; ipos.y++)
+	for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
+		int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
+		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
+		vec4 color = colors[index];
+		glColor4fv(value_ptr(color));
+		glVertex2fv(value_ptr(wpos));
+	}
+	glEnd();
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
