@@ -46,6 +46,10 @@ add_executable(prog5
 	prog5.cxx
 	)
 
+add_executable(prog6
+	prog6.cxx
+	)
+
 target_link_libraries(prog3
 	Threads::Threads
 )
@@ -57,6 +61,13 @@ target_link_libraries(prog4
 )
 
 target_link_libraries(prog5
+	Threads::Threads
+	glfw
+	GL
+	asyncpp
+)
+
+target_link_libraries(prog6
 	Threads::Threads
 	glfw
 	GL
@@ -79,4 +90,8 @@ target_include_directories(prog3 PRIVATE
 
 target_compile_definitions(prog5 PUBLIC
 	DIM=2
+)
+
+target_compile_definitions(prog6 PUBLIC
+	DIM=3
 )
