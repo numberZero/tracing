@@ -807,6 +807,21 @@ void resized(GLFWwindow* window, int width, int height) {
 
 static const char *title = "Space Refraction 2D v2";
 
+void toggle_active(GLFWwindow *window) {
+	double t0 = glfwGetTime();
+	active = !active;
+	if (active) {
+		t_offset = t0 - t_frozen;
+		glfwSetWindowTitle(window, title);
+
+	} else {
+		char title[256];
+		snprintf(title, sizeof(title), "%s (paused)", ::title);
+		t_frozen = t0 - t_offset;
+		glfwSetWindowTitle(window, title);
+	}
+}
+
 void toggle_fullscreen(GLFWwindow *window) {
 	static bool fullscreen = false;
 	static int x, y, w, h;
@@ -827,38 +842,29 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		glfwSetWindowShouldClose(window, GLFW_TRUE);
 	if (action != GLFW_PRESS)
 		return;
-	if (key == GLFW_KEY_SPACE) {
-		double t0 = glfwGetTime();
-		active = !active;
-		if (active) {
-			t_offset = t0 - t_frozen;
-			glfwSetWindowTitle(window, title);
 
-		} else {
-			char title[256];
-			snprintf(title, sizeof(title), "%s (paused)", ::title);
-			t_frozen = t0 - t_offset;
-			glfwSetWindowTitle(window, title);
-		}
-	}
-	if (key == GLFW_KEY_ENTER && mods == GLFW_MOD_ALT)
-		toggle_fullscreen(window);
-	if (key == GLFW_KEY_B) {
+	switch (key) {
+	case GLFW_KEY_SPACE:
+		toggle_active(window);
+		break;
+
+	case GLFW_KEY_ENTER:
+		if (mods == GLFW_MOD_ALT)
+			toggle_fullscreen(window);
+		break;
+
+	case GLFW_KEY_B:
 		background_lightness = 1.0f - background_lightness;
 		paint(window);
+		break;
+
+	case GLFW_KEY_T: settings::show_sun = !settings::show_sun; break;
+	case GLFW_KEY_F: settings::show_frame = !settings::show_frame; break;
+	case GLFW_KEY_R: settings::relative_display = !settings::relative_display; break;
+	case GLFW_KEY_P: settings::physical_acceleration = !settings::physical_acceleration; break;
+	case GLFW_KEY_M: settings::mouse_control = !settings::mouse_control; break;
+	case GLFW_KEY_J: settings::jet_control = !settings::jet_control; break;
 	}
-	if (key == GLFW_KEY_S)
-		settings::show_sun = !settings::show_sun;
-	if (key == GLFW_KEY_F)
-		settings::show_frame = !settings::show_frame;
-	if (key == GLFW_KEY_R)
-		settings::relative_display = !settings::relative_display;
-	if (key == GLFW_KEY_P)
-		settings::physical_acceleration = !settings::physical_acceleration;
-	if (key == GLFW_KEY_M)
-		settings::mouse_control = !settings::mouse_control;
-	if (key == GLFW_KEY_J)
-		settings::jet_control = !settings::jet_control;
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
