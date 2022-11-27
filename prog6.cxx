@@ -655,6 +655,8 @@ void render(GLFWwindow *wnd) {
 	ivec2 ihalfsize = 30.0f * shape;
 	ivec2 ipos;
 	double rtt1 = glfwGetTime();
+
+	glLoadIdentity();
 	glBegin(GL_POINTS);
 	for (ipos.y = -ihalfsize.y; ipos.y < ihalfsize.y; ipos.y++)
 	for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
@@ -697,13 +699,23 @@ void render(GLFWwindow *wnd) {
 	glEnd();
 	double rtt2 = glfwGetTime();
 	rt_time += rtt2 - rtt1;
-/*
+
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
 		{&uni.outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 1.0f})},
 		{&uni.channel, make_shared<ChannelVisual>(vec3{0.4f, 1.0f, 0.1f}, uni.params)},
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
+
+	{
+		auto &&visual = visuals.at(me->loc.space);
+		vec3 off = visual->where(me->loc.pos);
+		mat3 mat = transpose(me->loc.rot) * inverse(visual->jacobi(me->loc.pos));
+		mat = mat3(1, 0, 0, 0, 0, -1, 0, 1, 0) * mat;
+		glFrustum(-shape.x, shape.x, -shape.y, shape.y, 1.0f, 1000.0f);
+		glMultMatrixf(value_ptr(mat4(mat)));
+		glTranslatef(-off.x, -off.y, -off.z);
+	}
 
 	if (settings::show_thing_frame) {
 		int M = 30;
@@ -780,7 +792,8 @@ void render(GLFWwindow *wnd) {
 		}
 		glEnd();
 	}
-*/
+
+	glLoadIdentity();
 	if (settings::mouse_control) {
 		glColor4f(.5f, .5f, .5f, .5f);
 		glBegin(GL_LINES);
