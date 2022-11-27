@@ -501,9 +501,10 @@ const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
 const float a = .3f, b = 0.5f * a;
 Sphere spheres[] = {
-	{0.15f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
-	{0.45f, &uni.outer, {-(uni.params.outer_half_length + off), 0.5f, 0.0f}},
 	{1.414f * a, &uni.outer, {-(uni.params.outer_half_length + off), -2.0f, 0.0f}},
+	{0.25f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
+	{0.10f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f, 0.0f}},
+	{0.10f, &uni.outer, {(uni.params.outer_half_length + off), 0.0f, 0.0f}},
 };
 Mesh meshes[] = {
 	{
@@ -514,7 +515,7 @@ Mesh meshes[] = {
 	},
 };
 // Thing *me = &polys[0];
-Thing *me = &spheres[2];
+Thing *me = &spheres[0];
 
 void init() {
 	for (auto &sphere: spheres)
