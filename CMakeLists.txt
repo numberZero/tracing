@@ -48,6 +48,8 @@ add_executable(prog5
 
 add_executable(prog6
 	prog6.cxx
+	shader.cxx
+	io.cxx
 	)
 
 target_link_libraries(prog3
@@ -72,6 +74,8 @@ target_link_libraries(prog6
 	glfw
 	GL
 	asyncpp
+	png
+	fmt
 )
 
 option(MULTITHREAD "Use multithreading" ON)

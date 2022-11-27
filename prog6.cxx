@@ -14,6 +14,8 @@
 #include <GL/glext.h>
 #include "averager.hxx"
 #include "math.hxx"
+#include "shader.hxx"
+#include "io.hxx"
 #include "prog5/glshape.hxx"
 #include "prog5/subspace.hxx"
 #include "prog5/thing.hxx"
@@ -648,6 +650,19 @@ void update(GLFWwindow *wnd) {
 }
 
 using TextureID = GLuint;
+using ProgramID = GLuint;
+
+namespace prog {
+	ProgramID quad;
+}
+
+void load_shaders() {
+	prog::quad = link_program({
+		compile_shader(GL_VERTEX_SHADER, read_file("empty.v.glsl")),
+		compile_shader(GL_GEOMETRY_SHADER, read_file("screen_quad.g.glsl")),
+		compile_shader(GL_FRAGMENT_SHADER, read_file("simple.f.glsl")),
+	});
+}
 
 void render(GLFWwindow *wnd) {
 	const vec2 shape = getWinShape(wnd);
@@ -704,24 +719,10 @@ void render(GLFWwindow *wnd) {
 	glCreateTextures(GL_TEXTURE_2D, 1, &rt_result);
 	glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
 	glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, colors.data());
-	glLoadIdentity();
-	{
-		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, rt_result);
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-		glBegin(GL_QUADS);
-		glTexCoord2f(0.0f, 0.0f);
-		glVertex2f(-1.0f, -1.0f);
-		glTexCoord2f(1.0f, 0.0f);
-		glVertex2f(1.0f, -1.0f);
-		glTexCoord2f(1.0f, 1.0f);
-		glVertex2f(1.0f, 1.0f);
-		glTexCoord2f(0.0f, 1.0f);
-		glVertex2f(-1.0f, 1.0f);
-		glEnd();
-		glBindTexture(GL_TEXTURE_2D, 0);
-		glDisable(GL_TEXTURE_2D);
-	}
+	glUseProgram(prog::quad);
+	glBindTextureUnit(0, rt_result);
+	glDrawArrays(GL_POINTS, 0, 1);
+	glUseProgram(0);
 	glDeleteTextures(1, &rt_result);
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
@@ -731,6 +732,7 @@ void render(GLFWwindow *wnd) {
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
 
+	glLoadIdentity();
 	{
 		auto &&visual = visuals.at(me->loc.space);
 		vec3 off = visual->where(me->loc.pos);
@@ -830,6 +832,7 @@ void paint(GLFWwindow* window) {
 }
 
 void initGL() {
+	load_shaders();
 }
 
 void resized(GLFWwindow* window, int width, int height) {
