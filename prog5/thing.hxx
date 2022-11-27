@@ -7,13 +7,13 @@ class ThingySubspace;
 
 struct Location {
 	ThingySubspace const *space;
-	vec2 pos; ///< Положение (в координатах пространства @p space)
-	mat2 rot; ///< Матрица поворота (ортогональная!)
+	vecd pos; ///< Положение (в координатах пространства @p space)
+	matd rot; ///< Матрица поворота (ортогональная!)
 };
 
 class SubspaceBoundaryEx: public SubspaceBoundary, public SwitchMap {
 public:
-	virtual std::vector<Transition> findOverlaps(vec2 pos, float max_distance) const = 0;
+	virtual std::vector<Transition> findOverlaps(vecd pos, float max_distance) const = 0;
 };
 
 class Thing {
@@ -21,14 +21,14 @@ public:
 	Location loc; ///< Текущее положение центра
 	virtual float hit(Ray ray) const = 0;
 	virtual float getRadius() const noexcept = 0;
-	void move(vec2 off);
-	void rotate(mat2 rot);
+	void move(vecd off);
+	void rotate(matd rot);
 };
 
 struct ThingInfo {
 	Thing const *thing;
-	vec2 pos;
-	mat2 rot;
+	vecd pos;
+	matd rot;
 	float radius;
 };
 
@@ -54,7 +54,7 @@ public:
 		Transition t = boundary->findBoundary(ray);
 		float dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
 		for (auto &&info: things) {
-			const vec2 rel = info.pos - ray.pos;
+			const vecd rel = info.pos - ray.pos;
 			const float t_center = dot(rel, ray.dir);
 			const float d2 = dot(rel, rel) - sqr(t_center);
 			if (d2 > sqr(info.radius))
@@ -74,11 +74,11 @@ public:
 		Transition t = boundary->findBoundary(ray);
 		float max_dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
 		for (auto &&info: findThingsOnRay(ray)) {
-			const mat2 rot = transpose(info.rot);
+			const matd rot = transpose(info.rot);
 			const float dist = info.thing->hit({rot * (ray.pos - info.pos), rot * ray.dir});
 			if (dist < max_dist) {
 				max_dist = dist;
-				const vec2 pos = ray.pos + dist * ray.dir;
+				const vecd pos = ray.pos + dist * ray.dir;
 				result = {
 					.thing = info.thing,
 					.incident = {pos, ray.dir},
@@ -101,7 +101,7 @@ public:
 };
 
 /// Сдвигает объект на @p off, в координатах объекта
-inline void Thing::move(vec2 off) {
+inline void Thing::move(vecd off) {
 	loc.pos += loc.rot * off;
 	while (!loc.space->boundary->contains(loc.pos)) {
 		auto next = loc.space->boundary->leave({loc.pos, off});
@@ -116,7 +116,7 @@ inline void Thing::move(vec2 off) {
 }
 
 /// Доворачивает объект на @p rot, в координатах объекта
-inline void Thing::rotate(mat2 rot)
+inline void Thing::rotate(matd rot)
 {
 	loc.rot *= rot;
 }

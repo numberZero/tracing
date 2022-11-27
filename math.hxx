@@ -93,3 +93,8 @@ inline static uint32_t next_pow2(uint32_t v) {
 inline static vec2 cross(vec2 v) {
 	return {-v.y, v.x};
 }
+
+#ifdef DIM
+using vecd = vecn<DIM>; ///< Вектор размерности по умолчанию
+using matd = matn<DIM>; ///< Матрица размерности по умолчанию
+#endif

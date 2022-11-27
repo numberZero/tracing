@@ -76,3 +76,7 @@ include_directories(.)
 target_include_directories(prog3 PRIVATE
 	pcg-cpp/include/
 )
+
+target_compile_definitions(prog5 PUBLIC
+	DIM=2
+)

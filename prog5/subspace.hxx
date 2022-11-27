@@ -9,9 +9,9 @@ class Subspace;
 /// Переход в другое пространство
 struct Transition {
 	Subspace *into;	///< Новое пространство
-	vec2 atPos;	///< Координаты точки перехода в исходном пространстве
-	vec2 intoPos;	///< Координаты точки перехода в новом пространстве
-	mat2 jacobi;	///< Матрица преобразования векторов
+	vecd atPos;	///< Координаты точки перехода в исходном пространстве
+	vecd intoPos;	///< Координаты точки перехода в новом пространстве
+	matd jacobi;	///< Матрица преобразования векторов
 };
 
 struct BoundaryPoint: Transition {
@@ -20,12 +20,12 @@ struct BoundaryPoint: Transition {
 
 /// Точка с направлением
 struct Ray {
-	vec2 pos;	///< Положение точки
-	vec2 dir;	///< Направляющий вектор (обязательно единичный!)
+	vecd pos;	///< Положение точки
+	vecd dir;	///< Направляющий вектор (обязательно единичный!)
 
 	Ray() = default;
 	Ray(Ray const &) = default;
-	Ray(vec2 pos, vec2 dir)
+	Ray(vecd pos, vecd dir)
 		: pos(pos)
 		, dir(normalize(dir))
 	{
@@ -71,29 +71,34 @@ public:
 /// Карта окрестности искривлённого пространства
 class SwitchMap {
 public:
-	virtual bool contains(vec2 point) const = 0;
+	virtual bool contains(vecd point) const = 0;
 	virtual Transition leave(Ray at) const = 0;
 };
 
 class RiemannSubspace: public Subspace {
 public:
+#ifdef DIM
+	static constexpr int dim = DIM;
+#else
+	static constexpr int dim = 2;
+#endif
 	static constexpr float dt = 0.01;
 	static constexpr float eta = 0.02;
 	inline static int large_steps = 0;
 	inline static int regular_steps = 0;
 
 	const SwitchMap *map;
-	const RiemannMetric<2> *metric;
+	const RiemannMetric<dim> *metric;
 
-	float length(vec2 pos, vec2 vec) const {
-		mat2 g = metric->metric(pos);
+	float length(vecd pos, vecd vec) const {
+		matd g = metric->metric(pos);
 		return sqrt(dot(vec, g * vec));
 	}
 
 	TraceResult trace(Ray from) const override {
 		float t = 0.0f;
-		vec2 p = from.pos;
-		vec2 v = from.dir;
+		vecd p = from.pos;
+		vecd v = from.dir;
 		v /=  length(p, v);
 		while (map->contains(p)) {
 			auto a = covar(metric->krist(p), v);

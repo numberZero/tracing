@@ -16,13 +16,13 @@ using glm::dot;
 using std::sqrt;
 
 template <int N>
-using vec = glm::vec<N, float>;
+using vecd = glm::vec<N, float>;
 
 template <int N>
 using mat = glm::mat<N, N, float>;
 
 template <int N>
-mat<N> diagonal(vec<N> v) {
+mat<N> diagonal(vecd<N> v) {
 	mat<N> ret{0.0f};
 	for (int k = 0; k < N; k++)
 		ret[k][k] = v[k];
@@ -30,15 +30,15 @@ mat<N> diagonal(vec<N> v) {
 }
 
 auto diagonal(float x, float y) {
-	return diagonal(vec<2> {x, y});
+	return diagonal(vecd<2> {x, y});
 }
 
 auto diagonal(float x, float y, float z) {
-	return diagonal(vec<3>{x, y, z});
+	return diagonal(vecd<3>{x, y, z});
 }
 
 auto diagonal(float x, float y, float z, float w) {
-	return diagonal(vec<4>{x, y, z, w});
+	return diagonal(vecd<4>{x, y, z, w});
 }
 
 inline static float sqr(float x) {
@@ -125,12 +125,12 @@ struct tensor_traits;
 template <int N>
 struct tensor_traits<N, float> {
 	using type = float;
-	using next = vec<N>;
+	using next = vecd<N>;
 };
 
 template <int N>
-struct tensor_traits<N, vec<N>> {
-	using type = vec<N>;
+struct tensor_traits<N, vecd<N>> {
+	using type = vecd<N>;
 	using next = mat<N>;
 	using prev = float;
 };
@@ -139,14 +139,14 @@ template <int N>
 struct tensor_traits<N, mat<N>> {
 	using type = mat<N>;
 	using next = tens<N>;
-	using prev = vec<N>;
+	using prev = vecd<N>;
 };
 
 template <int N, typename T>
-static auto part_deriv(T f(vec<N>), vec<N> pos, float eps = 1e-3f) {
+static auto part_deriv(T f(vecd<N>), vecd<N> pos, float eps = 1e-3f) {
 	typename tensor_traits<N, T>::next result;
 	for (int k = 0; k < N; k++) {
-		vec<N> delta = {};
+		vecd<N> delta = {};
 		delta[k] = eps;
 		result[k] = (f(pos + delta) - f(pos - delta)) / (2.0f * eps);
 	}
@@ -154,12 +154,12 @@ static auto part_deriv(T f(vec<N>), vec<N> pos, float eps = 1e-3f) {
 }
 
 template <int N>
-static tens<N> dmetric(vec<N> pos, float eps = 1e-3f) {
+static tens<N> dmetric(vecd<N> pos, float eps = 1e-3f) {
 	return part_deriv(metric, pos, eps);
 }
 
 template <int N>
-static tens<N> krist(vec<N> pos) {
+static tens<N> krist(vecd<N> pos) {
 	// Γ^i_k_l = .5 * g^i^m * (g_m_k,l + g_m_l,k - g_k_l,m)
 	mat<N> g = glm::inverse(metric(pos)); // с верхними индексами
 	tens<N> d = dmetric(pos);
@@ -177,21 +177,21 @@ static tens<N> krist(vec<N> pos) {
 }
 
 template <int N>
-static float length(vec<N> pos, vec<N> vec) {
+static float length(vecd<N> pos, vecd<N> vec) {
 	mat<N> g = metric(pos);
 	return sqrt(dot(vec, g * vec));
 }
 
 template <int N>
-static float length(std::span<vec<N>> line) {
+static float length(std::span<vecd<N>> line) {
 	double d = 0.0;
 	if (line.empty())
 		return 0.0;
-	vec<N> p1 = line[0];
+	vecd<N> p1 = line[0];
 	mat<N> g1 = metric(p1);
 	for (auto p2: line.subspan(1)) {
 		mat<N> g2 = metric(p2);
-		vec<N> step = p2 - p1;
+		vecd<N> step = p2 - p1;
 		float dd1 = sqrt(dot(step, g1 * step));
 		float dd2 = sqrt(dot(step, g2 * step));
 		d += 0.5f * (dd1 + dd2);
@@ -202,8 +202,8 @@ static float length(std::span<vec<N>> line) {
 }
 
 template <int N>
-vec<N> covar(tens<N> G, vec<N> v) {
-	vec<N> ret;
+vecd<N> covar(tens<N> G, vecd<N> v) {
+	vecd<N> ret;
 	for (int k = 0; k < N; k++)
 		ret[k] = -dot(v, G[k] * v);
 	return ret;
@@ -258,16 +258,16 @@ static vec2 globalize(vec2 p, vec2 v) {
 }
 
 template <int N>
-static std::vector<vec<N>> trace(vec<N> base, vec<N> dir, float distance, float dt = 1e-3) {
+static std::vector<vecd<N>> trace(vecd<N> base, vecd<N> dir, float distance, float dt = 1e-3) {
 	int steps = distance / dt;
-	std::vector<vec<N>> result;
+	std::vector<vecd<N>> result;
 	result.reserve(steps + 1);
 	auto p = base;
 	auto v = globalize(base, dir);
 	v /=  length(p, v);
 	result.push_back(p);
 	for (int k = 0; k < steps; k++) {
-		vec<N> a = covar(krist(p), v);
+		vecd<N> a = covar(krist(p), v);
 		v += dt * a;
 		p += dt * v;
 /*

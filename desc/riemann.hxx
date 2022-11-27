@@ -19,7 +19,7 @@ public:
 
 	tens dmetric(vec pos, float eps = 1e-3f) const {
 		tens result;
-		for (int k = 0; k < 2; k++) {
+		for (int k = 0; k < N; k++) {
 			vec delta = {};
 			delta[k] = eps;
 			result[k] = (metric(pos + delta) - metric(pos - delta)) / (2.0f * eps);
