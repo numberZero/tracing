@@ -512,7 +512,6 @@ namespace settings {
 }
 
 bool scale_space = false;
-vec2 sun;
 
 mat2 rotate(float angle) {
 	float s = std::sin(angle), c = std::cos(angle);
@@ -572,9 +571,6 @@ void update(GLFWwindow *wnd) {
 		me->loc = loc;
 		v = {};
 	}
-
-	float theta = .7 * t;
-	sun = 8.0f * vec2(cos(theta), sin(theta));
 }
 
 void render() {
@@ -599,9 +595,9 @@ void render() {
 		for (int k = -N; k < N; k++) {
 			float phi = (.5 + k) * (M_PI / N);
 			TrackPoint pt;
-			pt.pos = sun;
-			pt.dir = vec2(cos(phi), sin(phi));
-			pt.space = &uni.outer;
+			pt.pos = me->loc.pos;
+			pt.dir = me->loc.rot * vec2(cos(phi), sin(phi));
+			pt.space = me->loc.space;
 			int n = 0;
 			vec2 p, v;
 			glBegin(GL_LINE_STRIP);
