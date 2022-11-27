@@ -559,8 +559,8 @@ bool scale_space = false;
 ///
 /// Положительные повороты:
 ///   * рысканье (X) — влево
-///   * тангаж (Y) — вверх
-///   * крен (Z) — по часовой
+///   * тангаж (Y) — вниз
+///   * крен (Z) — против часовой
 mat3 rotate(vec3 angle) {
 	vec3 s = sin(angle), c = cos(angle);
 	mat3 yaw = {
@@ -570,13 +570,13 @@ mat3 rotate(vec3 angle) {
 	};
 	mat3 pitch = {
 		1, 0, 0,
-		0, c.y, s.y,
-		0, -s.y, c.y,
+		0, c.y, -s.y,
+		0, s.y, c.y,
 	};
 	mat3 roll = {
-		c.z, 0, -s.z,
+		c.z, 0, s.z,
 		0, 1, 0,
-		s.z, 0, c.z,
+		-s.z, 0, c.z,
 	};
 	return yaw * pitch * roll;
 }
