@@ -59,6 +59,46 @@ struct Coefs {
 
 static constexpr float eps = 1e-4;
 
+enum class Side {
+	Outside = 1,
+	Inside = -1,
+};
+
+struct CylinderDist {
+	float cap, side;
+};
+
+static CylinderDist cylinderDist(Ray from, float halflength, float radius, Side side = Side::Outside) {
+	CylinderDist dist{std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
+
+	{ // Крышки цилиндра
+		const float d = -int(side) * sign(from.dir.x) * halflength - from.pos.x;
+		const float t = d / from.dir.x;
+		const vec3 p = from.pos + t * from.dir;
+		if (t > 0.0f && length(vec2{p.y, p.z}) <= radius)
+			dist.cap = t - eps;
+	}
+
+	{ // Боковая стенка цилиндра
+		const vec2 pos = {from.pos.y, from.pos.z};
+		const vec2 dir = {from.dir.y, from.dir.z}; // не единичный!
+		const float t_center = -dot(pos, dir);
+		const float scale = dot(dir, dir);
+		const float off = sqr(radius) - dot(pos, pos);
+		if (const float d2 = sqr(t_center) + scale * off; d2 >= 0.0f) {
+			const float t_diff = std::sqrt(d2);
+			const float t = (t_center - int(side) * t_diff) / scale;
+			if (t >= -eps) {
+				vec3 p = from.pos + t * from.dir;
+				if (abs(p.x) <= halflength)
+					dist.side = t - eps;
+			}
+		}
+	}
+
+	return dist;
+}
+
 class InwardsBoundary final: public SubspaceBoundaryEx {
 public:
 	Params const &params;
@@ -68,33 +108,8 @@ public:
 	InwardsBoundary(Params &_params): params(_params) {}
 
 	BoundaryPoint findBoundary(Ray from) const override {
-		float dist = std::numeric_limits<float>::infinity();
-
-		{ // Крышки цилиндра
-			const float d = -sign(from.dir.x) * params.outer_half_length - from.pos.x;
-			const float t = d / from.dir.x;
-			const vec3 p = from.pos + t * from.dir;
-			if (t > 0.0f && length(vec2{p.y, p.z}) <= params.outer_radius)
-				dist = t - eps;
-		}
-
-		{ // Боковая стенка цилиндра
-			const vec2 pos = {from.pos.y, from.pos.z};
-			const vec2 dir = {from.dir.y, from.dir.z}; // не единичный!
-			const float t_center = -dot(pos, dir);
-			const float scale = dot(dir, dir);
-			const float off = sqr(params.outer_radius) - dot(pos, pos);
-			if (const float d2 = sqr(t_center) + scale * off; d2 >= 0.0f) {
-				const float t_diff = std::sqrt(d2);
-				const float t = (t_center - t_diff) / scale;
-				if (t >= -eps) {
-					vec3 p = from.pos + t * from.dir;
-					if (abs(p.x) <= params.outer_half_length)
-						dist = t - eps;
-				}
-			}
-		}
-
+		auto dists = cylinderDist(from, params.outer_half_length, params.outer_radius);
+		float dist = min(dists.cap, dists.side);
 		if (!std::isfinite(dist))
 			return {{nullptr, from.pos, from.pos, mat3(1)}, dist};
 		const vec3 pos = from.pos + dist * from.dir;
@@ -142,18 +157,13 @@ public:
 	ChannelBoundary(Params &_params): params(_params) {}
 
 	BoundaryPoint findBoundary(Ray from) const override {
-		const vec3 radius = {params.inner_half_length, params.inner_radius, params.inner_radius};
-		const vec3 d = sign(from.dir) * radius - from.pos;
-		const vec3 dist = d / from.dir;
-		const float dist_outer = dist.x + eps;
-		const float dist_side = dist.y;// + eps;
-
-		const vec3 pos = from.pos + min(dist_outer, dist_side) * from.dir;
+		auto dist = cylinderDist(from, params.inner_half_length, params.inner_radius, Side::Inside);
+		const vec3 pos = from.pos + min(dist.cap, dist.side) * from.dir;
 		vec3 into = pos;
 
-		if (dist_outer <= dist_side) {
+		if (dist.cap <= dist.side) {
 			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
-			return {{outer, pos, into, mat3(1)}, dist_outer};
+			return {{outer, pos, into, mat3(1)}, dist.cap};
 		} else {
 			Coefs cs(params);
 			float m = 1.0f;
@@ -166,7 +176,7 @@ public:
 			} else {
 				into.x += copysign(cs.y2 - cs.x2, pos.x);
 			}
-			return {{side, pos, into, diagonal(m, 1)}, dist_side};
+			return {{side, pos, into, diagonal(m, 1)}, dist.side};
 		}
 	}
 
@@ -177,7 +187,7 @@ public:
 			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
 			overlaps.push_back({outer, pos, into, mat3(1)});
 		}
-		if (abs(pos.y) + max_distance >= params.inner_radius) {
+		if (length(vec2{pos.y, pos.z}) + max_distance >= params.inner_radius) {
 			Coefs cs(params);
 			vec3 into = pos;
 			float m = 1.0f;
@@ -196,16 +206,14 @@ public:
 	}
 
 	bool contains(vec3 point) const override {
-		const vec3 radius = {params.inner_half_length, params.inner_radius, params.inner_radius};
-		return all(lessThan(abs(point), radius));
+		return length(point.x) < params.inner_half_length && length(vec2{point.y, point.z}) < params.inner_radius;
 	}
 
 	Transition leave(Ray at) const override {
-		const vec3 radius = {params.inner_half_length, params.inner_radius, params.inner_radius};
 		const vec3 pos = at.pos;
 		vec3 into = pos;
 
-		if (any(lessThanEqual(abs(pos), radius))) {
+		if (length(pos.x) <= params.inner_half_length || length(vec2{pos.y, pos.z}) <= params.inner_radius) {
 			into.x += copysign(params.outer_half_length - params.inner_half_length, pos.x);
 			return {outer, pos, into, mat3(1)};
 		} else {
@@ -250,7 +258,7 @@ class ChannelSideMetric: public ChannelMetric {
 
 	decomp halfmetric(vec pos) const noexcept override {
 		auto g = ChannelMetric::halfmetric(pos);
-		float c = clamp((params.outer_radius - abs(pos.y)) / (params.outer_radius - params.inner_radius), 0.0f, 1.0f);
+		float c = clamp((params.outer_radius - length(vec2{pos.y, pos.z})) / (params.outer_radius - params.inner_radius), 0.0f, 1.0f);
 		c = smoothstep(c);
 		return {g.ortho, mix(vec3(1.0f), g.diag, c)};
 	}
@@ -265,18 +273,18 @@ public:
 	SideBoundary(Params &_params): params(_params) {}
 
 	bool contains(vec3 point) const override {
-		return abs(point.x) <= params.outer_half_length + eps && abs(point.y) <= params.outer_radius + eps && abs(point.y) >= params.inner_radius - eps;
+		float r = length(vec2{point.y, point.z});
+		return abs(point.x) <= params.outer_half_length + eps && r <= params.outer_radius + eps && r >= params.inner_radius - eps;
 	}
 
 	Transition leave(const Ray at) const override {
 		vec3 pos = at.pos;
 		vec3 dir = at.dir;
 		Coefs cs(params);
-		if (abs(pos.y) >= params.inner_radius)
+		if (length(vec2{pos.y, pos.z}) >= params.inner_radius)
 			return {outer, pos, pos, mat3(1)};
 		if (abs(pos.x) >= params.outer_half_length && sign(dir.x) == sign(pos.x))
 			return {outer, pos, pos, mat3(1)};
-		debugf("side->channel (% .1f, % .1f)>>(% .3f, % .3f) -> ", pos.x, pos.y, dir.x, dir.y);
 		float m = 1.0f;
 		if (abs(pos.x) < cs.y1) {
 			pos.x *= cs.x1 / cs.y1;
@@ -287,7 +295,6 @@ public:
 		} else {
 			pos.x -= copysign(cs.y2 - cs.x2, pos.x);
 		}
-		debugf("(% .1f, % .1f)>>(% .3f, % .3f)\n", pos.x, pos.y, dir.x, dir.y);
 		return {channel, at.pos, pos, diagonal(m, 1.0f)};
 	}
 };
