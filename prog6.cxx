@@ -415,7 +415,7 @@ public:
 			vec3 a = points[tri.x];
 			vec3 b = points[tri.y];
 			vec3 c = points[tri.z];
-			vec3 n = cross(a, b);
+			vec3 n = cross(b - a, c - a);
 			vec3 rel_a = a - ray.pos;
 			vec3 rel_b = b - ray.pos;
 			vec3 rel_c = c - ray.pos;
