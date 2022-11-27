@@ -826,7 +826,7 @@ void resized(GLFWwindow* window, int width, int height) {
 	::winsize = sqrt(width * height / 2) / 4;
 }
 
-static const char *title = "Space Refraction 2D v2";
+static const char *title = "Space Refraction 3D v2";
 
 void toggle_active(GLFWwindow *window) {
 	double t0 = glfwGetTime();
