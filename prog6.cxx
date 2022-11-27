@@ -647,6 +647,8 @@ void update(GLFWwindow *wnd) {
 	}
 }
 
+using TextureID = GLuint;
+
 void render(GLFWwindow *wnd) {
 	const vec2 shape = getWinShape(wnd);
 	const ivec2 ihalfsize = settings::rays * shape;
@@ -698,20 +700,29 @@ void render(GLFWwindow *wnd) {
 	rt_rays += colors.size();
 	rt_time += rtt2 - rtt1;
 
+	TextureID rt_result = 0;
+	glCreateTextures(GL_TEXTURE_2D, 1, &rt_result);
+	glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
+	glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, colors.data());
 	glLoadIdentity();
 	{
-		glBegin(GL_POINTS);
-		ivec2 ipos;
-		for (ipos.y = -ihalfsize.y; ipos.y < ihalfsize.y; ipos.y++)
-		for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
-			int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
-			vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
-			vec4 color = colors[index];
-			glColor4fv(value_ptr(color));
-			glVertex2fv(value_ptr(wpos));
-		}
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, rt_result);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		glBegin(GL_QUADS);
+		glTexCoord2f(0.0f, 0.0f);
+		glVertex2f(-1.0f, -1.0f);
+		glTexCoord2f(1.0f, 0.0f);
+		glVertex2f(1.0f, -1.0f);
+		glTexCoord2f(1.0f, 1.0f);
+		glVertex2f(1.0f, 1.0f);
+		glTexCoord2f(0.0f, 1.0f);
+		glVertex2f(-1.0f, 1.0f);
 		glEnd();
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glDisable(GL_TEXTURE_2D);
 	}
+	glDeleteTextures(1, &rt_result);
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
