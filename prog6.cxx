@@ -707,7 +707,7 @@ void render(GLFWwindow *wnd) {
 				auto traced = pt.space->trace(pt);
 				if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
 					if (auto t = flat->traceToThing(pt); t.thing) {
-						color = vec4{0, 0, 0, 1};
+						color = vec4{t.thingspace_incident.pos, 1};
 						break;
 					}
 				}

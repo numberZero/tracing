@@ -8,5 +8,7 @@ out vec4 o_color;
 
 void main() {
 	vec4 c = texture(uvs, pos);
-	o_color = c.w == 0 ? texture(space, c.xyz) : vec4(0, 0, 0, 0);
+	o_color = texture(space, c.xyz);
+// 	if (c.w != int(c.w))
+// 		o_color = vec4(0, 0, 0, 0);
 }
