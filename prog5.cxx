@@ -355,7 +355,7 @@ public:
 		const float t_diff = std::sqrt(sqr(radius) - d2);
 		const float t_near = t_center - t_diff;
 		const float t_far = t_center + t_diff;
-		if (t_far >= 0.0f) // Если дальняя точка впереди, возвращаем расстояние до ближней, даже если она позади.
+		if (t_near >= -eps)
 			return t_near;
 		else
 			return std::numeric_limits<float>::infinity();
@@ -409,7 +409,8 @@ public:
 				vec2 side_normal = cross(side_tangent);
 				float k = -determinant(mat2(a, b));
 				float dist = (k - dot(ray.pos, side_normal)) / dot(ray.dir, side_normal);
-				min_dist = min(min_dist, dist); // Для выпуклого контура можно было бы сразу `return dist`.
+				if (dist >= -eps)
+					min_dist = min(min_dist, dist); // Для выпуклого контура можно было бы сразу `return dist`.
 			}
 			a = b;
 		}
