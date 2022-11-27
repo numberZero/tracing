@@ -540,8 +540,8 @@ namespace settings {
 	bool jet_control = false;
 
 	float movement_acceleration = 6.0f;
-	float movement_speed = 6.0f;
-	float rotation_speed = 2.5f;
+	vec3 movement_speed = {1.0f, 6.0f, 1.0f};
+	vec3 rotation_speed = {2.5f, 2.5f, 0.5f};
 }
 
 bool scale_space = false;
@@ -591,36 +591,40 @@ void update(GLFWwindow *wnd) {
 	float dt = active ? t - t0 : 0.0;
 	t0 = t;
 
-	float mov = 0.0f;
+	vec3 mov{0.0f};
 	vec3 rot{0.0f};
 	static vec3 v = {0.0f, 0.0f, 0.0f};
-	ivec3 wsize;
-	dvec3 mouse;
+	ivec2 wsize;
+	dvec2 mouse;
 	glfwGetCursorPos(wnd, &mouse.x, &mouse.y);
 	glfwGetWindowSize(wnd, &wsize.x, &wsize.y);
 	if (settings::mouse_control) {
-		vec3 ctl = clamp(2.0f * vec3(mouse) / vec3(wsize) - 1.0f, -1.0f, 1.0f);
-		mov = -ctl.y;
+		vec2 ctl = clamp(2.0f * vec2(mouse) / vec2(wsize) - 1.0f, -1.0f, 1.0f);
 		rot.x = -ctl.x;
+		rot.y = ctl.y;
 	} else {
 		if (glfwGetKey(wnd, GLFW_KEY_LEFT) == GLFW_PRESS) rot.x += 1.0f;
 		if (glfwGetKey(wnd, GLFW_KEY_RIGHT) == GLFW_PRESS) rot.x -= 1.0f;
-		if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) mov += 1.0f;
-		if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) mov -= 1.0f;
-		if (glfwGetKey(wnd, GLFW_KEY_W) == GLFW_PRESS) rot.y += 1.0f;
-		if (glfwGetKey(wnd, GLFW_KEY_S) == GLFW_PRESS) rot.y -= 1.0f;
-		if (glfwGetKey(wnd, GLFW_KEY_A) == GLFW_PRESS) rot.z += 1.0f;
-		if (glfwGetKey(wnd, GLFW_KEY_D) == GLFW_PRESS) rot.z -= 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) rot.y -= 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) rot.y += 1.0f;
 	}
-	if (settings::jet_control)
-		rot *= mov;
+	if (glfwGetKey(wnd, GLFW_KEY_W) == GLFW_PRESS) mov.y += 1.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_S) == GLFW_PRESS) mov.y -= 1.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_A) == GLFW_PRESS) mov.x -= 1.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_D) == GLFW_PRESS) mov.x += 1.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_Q) == GLFW_PRESS) rot.z += 1.0f;
+	if (glfwGetKey(wnd, GLFW_KEY_E) == GLFW_PRESS) rot.z -= 1.0f;
 
-	if (settings::physical_acceleration)
-		v += dt * settings::movement_acceleration * vec3(0.0f, mov, 0.0f);
-	else
-		v = settings::movement_speed * vec3(0.0f, mov, 0.0f);
 	mat3 rmat = rotate(dt * settings::rotation_speed * rot);
-	v = transpose(rmat) * v;
+	if (settings::physical_acceleration) {
+		v += dt * settings::movement_acceleration * mov;
+		v = transpose(rmat) * v;
+	} else if (settings::jet_control) {
+		v += dt * settings::movement_acceleration * mov;
+		v = clamp(v, -settings::movement_speed, settings::movement_speed);
+	} else {
+		v = settings::movement_speed * mov;
+	}
 	me->rotate(rmat);
 	auto loc = me->loc;
 	try {
@@ -840,7 +844,7 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		return;
 
 	switch (key) {
-	case GLFW_KEY_SPACE:
+	case GLFW_KEY_PAUSE:
 		toggle_active(window);
 		break;
 
@@ -855,10 +859,10 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		break;
 
 	case GLFW_KEY_T: settings::show_sun = !settings::show_sun; break;
-	case GLFW_KEY_F: settings::show_frame = !settings::show_frame; break;
+	case GLFW_KEY_F: settings::show_thing_frame = settings::show_frame = !settings::show_frame; break;
 	case GLFW_KEY_R: settings::relative_display = !settings::relative_display; break;
 	case GLFW_KEY_P: settings::physical_acceleration = !settings::physical_acceleration; break;
-	case GLFW_KEY_M: settings::mouse_control = !settings::mouse_control; break;
+	case GLFW_KEY_SPACE: settings::mouse_control = !settings::mouse_control; break;
 	case GLFW_KEY_J: settings::jet_control = !settings::jet_control; break;
 	case GLFW_KEY_K: settings::show_previews = !settings::show_previews; break;
 	}
