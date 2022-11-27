@@ -392,7 +392,19 @@ public:
 		glBegin(GL_LINE_LOOP);
 		for (int k = -M; k < M; k++) {
 			float phi = (.5 + k) * (M_PI / M);
-			glVertex2fv(value_ptr(visual->where(loc.pos + radius * vec3(cos(phi), sin(phi), 0.0f))));
+			glVertex3fv(value_ptr(visual->where(loc.pos + radius * loc.rot * vec3(cos(phi), sin(phi), 0.0f))));
+		}
+		glEnd();
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex3fv(value_ptr(visual->where(loc.pos + radius * loc.rot * vec3(cos(phi), 0.0f, sin(phi)))));
+		}
+		glEnd();
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex3fv(value_ptr(visual->where(loc.pos + radius * loc.rot * vec3(0.0f, cos(phi), sin(phi)))));
 		}
 		glEnd();
 	}
@@ -514,8 +526,8 @@ void init() {
 		uni.things.push_back(&sphere);
 // 	for (auto &th: polys)
 // 		uni.things.push_back(&th);
-// 	for (auto &th: uni.things)
-// 		th->loc.rot = {0, -1, 1, 0};
+	for (auto &th: uni.things)
+		th->loc.rot = mat3(1.0f);
 }
 
 namespace settings {
@@ -538,9 +550,35 @@ namespace settings {
 
 bool scale_space = false;
 
-mat3 rotate(float angle) {
-	float s = std::sin(angle), c = std::cos(angle);
-	return {c, s, 0, -s, c, 0, 0, 0, 1};
+/// Поворот на углы @p angle (yaw, pitch, roll — рысканье, тангаж, крен).
+///
+/// Направления осей:
+///   * X — вправо
+///   * Y — вперёд
+///   * Z — вверх
+///
+/// Положительные повороты:
+///   * рысканье (X) — влево
+///   * тангаж (Y) — вверх
+///   * крен (Z) — по часовой
+mat3 rotate(vec3 angle) {
+	vec3 s = sin(angle), c = cos(angle);
+	mat3 yaw = {
+		c.x, s.x, 0,
+		-s.x, c.x, 0,
+		0, 0, 1,
+	};
+	mat3 pitch = {
+		1, 0, 0,
+		0, c.y, s.y,
+		0, -s.y, c.y,
+	};
+	mat3 roll = {
+		c.z, 0, -s.z,
+		0, 1, 0,
+		s.z, 0, c.z,
+	};
+	return yaw * pitch * roll;
 }
 
 void update(GLFWwindow *wnd) {
@@ -550,7 +588,7 @@ void update(GLFWwindow *wnd) {
 	t0 = t;
 
 	float mov = 0.0f;
-	float rot = 0.0f;
+	vec3 rot{0.0f};
 	static vec3 v = {0.0f, 0.0f, 0.0f};
 	ivec3 wsize;
 	dvec3 mouse;
@@ -559,12 +597,16 @@ void update(GLFWwindow *wnd) {
 	if (settings::mouse_control) {
 		vec3 ctl = clamp(2.0f * vec3(mouse) / vec3(wsize) - 1.0f, -1.0f, 1.0f);
 		mov = -ctl.y;
-		rot = -ctl.x;
+		rot.x = -ctl.x;
 	} else {
-		if (glfwGetKey(wnd, GLFW_KEY_LEFT) == GLFW_PRESS) rot += 1.0f;
-		if (glfwGetKey(wnd, GLFW_KEY_RIGHT) == GLFW_PRESS) rot -= 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_LEFT) == GLFW_PRESS) rot.x += 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_RIGHT) == GLFW_PRESS) rot.x -= 1.0f;
 		if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) mov += 1.0f;
 		if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) mov -= 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_W) == GLFW_PRESS) rot.y += 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_S) == GLFW_PRESS) rot.y -= 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_A) == GLFW_PRESS) rot.z += 1.0f;
+		if (glfwGetKey(wnd, GLFW_KEY_D) == GLFW_PRESS) rot.z -= 1.0f;
 	}
 	if (settings::jet_control)
 		rot *= mov;
@@ -601,6 +643,7 @@ void update(GLFWwindow *wnd) {
 }
 
 void render() {
+	glEnable(GL_DEPTH_CLAMP);
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
 		{&uni.outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 1.0f})},
@@ -613,7 +656,7 @@ void render() {
 		vec3 off = visual->where(me->loc.pos);
 		mat4 rmat = transpose(me->loc.rot) * inverse(visual->jacobi(me->loc.pos));
 		glMultMatrixf(value_ptr(rmat));
-		glTranslatef(-off.x, -off.y, 0.0f);
+		glTranslatef(-off.x, -off.y, -off.z);
 	}
 
 	if (settings::show_sun) {
@@ -636,8 +679,8 @@ void render() {
 					glColor4f(1, 1, 1, .5);
 					p = visual->where(pt.pos);
 					v = visual->jacobi(pt.pos) * pt.dir;
-					glVertex2fv(value_ptr(p));
-					glVertex2fv(value_ptr(p + v));
+					glVertex3fv(value_ptr(p));
+					glVertex3fv(value_ptr(p + v));
 					glEnd();
 					glBegin(GL_LINE_STRIP);
 				}
@@ -661,27 +704,27 @@ void render() {
 				p = visual->where(endpoint);
 				v = visual->jacobi(endpoint) * pt.dir;
 				glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
-				glVertex2fv(value_ptr(visual->where(pt.pos)));
-				glVertex2fv(value_ptr(p));
+				glVertex3fv(value_ptr(visual->where(pt.pos)));
+				glVertex3fv(value_ptr(p));
 				if (hit_a_thing) {
 					if (settings::show_term_dirs) {
 						glColor3f(1, 1, 0);
-						glVertex2fv(value_ptr(p));
-						glVertex2fv(value_ptr(p + .5f * v));
+						glVertex3fv(value_ptr(p));
+						glVertex3fv(value_ptr(p + .5f * v));
 					}
 					break;
 				}
-				glVertex2fv(value_ptr(p));
+				glVertex3fv(value_ptr(p));
 				if (traced.to.space) {
 					pt = traced.to;
 				} else {
-					glVertex2fv(value_ptr(p + 50.f * v));
+					glVertex3fv(value_ptr(p + 50.f * v));
 					break;
 				}
 				if (n++ > settings::trace_limit) {
 					glColor3f(1, 0, 0);
-					glVertex2fv(value_ptr(p));
-					glVertex2fv(value_ptr(p + 1.f * v));
+					glVertex3fv(value_ptr(p));
+					glVertex3fv(value_ptr(p + 1.f * v));
 					break;
 				}
 			}
@@ -716,24 +759,55 @@ void render() {
 	}
 
 	if (settings::show_frame) {
-		glBegin(GL_LINE_LOOP);
-		glColor3f(.0f, .9f, .9f);
-		glVertex2f(-uni.params.outer_half_length, -uni.params.outer_radius);
-		glVertex2f(-uni.params.outer_half_length, uni.params.outer_radius);
-		glVertex2f(uni.params.outer_half_length, uni.params.outer_radius);
-		glVertex2f(uni.params.outer_half_length, -uni.params.outer_radius);
-		glEnd();
-		glBegin(GL_LINES);
-		glColor3f(.0f, .2f, .7f);
-		glVertex2f(-uni.params.outer_half_length, -uni.params.inner_radius);
-		glVertex2f(uni.params.outer_half_length, -uni.params.inner_radius);
-		glVertex2f(-uni.params.outer_half_length, uni.params.inner_radius);
-		glVertex2f(uni.params.outer_half_length, uni.params.inner_radius);
+		int N = 12;
+		int M = 36;
 		Coefs cs(uni.params);
-		glVertex2f(-cs.y1, -uni.params.outer_radius);
-		glVertex2f(-cs.y1, uni.params.outer_radius);
-		glVertex2f(cs.y1, uni.params.outer_radius);
-		glVertex2f(cs.y1, -uni.params.outer_radius);
+		glBegin(GL_LINES);
+		glColor4f(.0f, .9f, .9f, .75f);
+		for (int k = -N; k < N; k++) {
+			float phi = (.5 + k) * (M_PI / N);
+			vec3 r{0.0f, cos(phi), sin(phi)};
+			vec3 l{1.0f, 0.0f, 0.0f};
+			glVertex3fv(value_ptr(uni.params.outer_radius * r - uni.params.outer_half_length * l));
+			glVertex3fv(value_ptr(uni.params.outer_radius * r + uni.params.outer_half_length * l));
+		}
+		glEnd();
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex3fv(value_ptr(vec3(-uni.params.outer_half_length, 0.0f, 0.0f) + uni.params.outer_radius * vec3(0.0f, cos(phi), sin(phi))));
+		}
+		glEnd();
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex3fv(value_ptr(vec3(+uni.params.outer_half_length, 0.0f, 0.0f) + uni.params.outer_radius * vec3(0.0f, cos(phi), sin(phi))));
+		}
+		glEnd();
+		glColor4f(.0f, .2f, .7f, .75f);
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex3fv(value_ptr(vec3(-uni.params.outer_half_length, 0.0f, 0.0f) + uni.params.inner_radius * vec3(0.0f, cos(phi), sin(phi))));
+		}
+		glEnd();
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex3fv(value_ptr(vec3(+uni.params.outer_half_length, 0.0f, 0.0f) + uni.params.inner_radius * vec3(0.0f, cos(phi), sin(phi))));
+		}
+		glEnd();
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex3fv(value_ptr(vec3(-cs.y1, 0.0f, 0.0f) + uni.params.inner_radius * vec3(0.0f, cos(phi), sin(phi))));
+		}
+		glEnd();
+		glBegin(GL_LINE_LOOP);
+		for (int k = -M; k < M; k++) {
+			float phi = (.5 + k) * (M_PI / M);
+			glVertex3fv(value_ptr(vec3(+cs.y1, 0.0f, 0.0f) + uni.params.inner_radius * vec3(0.0f, cos(phi), sin(phi))));
+		}
 		glEnd();
 	}
 
