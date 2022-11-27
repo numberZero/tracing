@@ -528,17 +528,12 @@ void init() {
 }
 
 namespace settings {
-	int rays = 120;
+	float rays = 30;
 	int trace_limit = 10;
-	bool show_term_dirs = false;
-	bool show_ray_dirs = false;
-	bool show_sun = true;
-	bool show_frame = true;
-	bool show_previews = true;
-	bool show_thing_frame = true;
-	bool relative_display = true;
+	bool show_frame = false;
+	bool show_previews = false;
 	bool physical_acceleration = false;
-	bool mouse_control = false;
+	bool mouse_control = true;
 	bool jet_control = false;
 
 	float movement_acceleration = 6.0f;
@@ -654,7 +649,7 @@ void update(GLFWwindow *wnd) {
 
 void render(GLFWwindow *wnd) {
 	const vec2 shape = getWinShape(wnd);
-	const ivec2 ihalfsize = 30.0f * shape;
+	const ivec2 ihalfsize = settings::rays * shape;
 	const double rtt1 = glfwGetTime();
 
 	std::vector<vec4> colors;
@@ -735,8 +730,7 @@ void render(GLFWwindow *wnd) {
 		glTranslatef(-off.x, -off.y, -off.z);
 	}
 
-	if (settings::show_thing_frame) {
-		int M = 30;
+	if (settings::show_frame) {
 		for (auto *bnd: uni.thingySpaces) {
 			auto &&visual = visuals.at(bnd);
 			for (auto &&info: bnd->things) {
@@ -758,7 +752,6 @@ void render(GLFWwindow *wnd) {
 
 	if (settings::show_frame) {
 		int N = 12;
-		int M = 36;
 		Coefs cs(uni.params);
 		auto *visual = visuals.at(&uni.outer).get();
 		glBegin(GL_LINES);
@@ -886,9 +879,7 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		paint(window);
 		break;
 
-	case GLFW_KEY_T: settings::show_sun = !settings::show_sun; break;
-	case GLFW_KEY_F: settings::show_thing_frame = settings::show_frame = !settings::show_frame; break;
-	case GLFW_KEY_R: settings::relative_display = !settings::relative_display; break;
+	case GLFW_KEY_F: settings::show_frame = !settings::show_frame; break;
 	case GLFW_KEY_P: settings::physical_acceleration = !settings::physical_acceleration; break;
 	case GLFW_KEY_SPACE: settings::mouse_control = !settings::mouse_control; break;
 	case GLFW_KEY_J: settings::jet_control = !settings::jet_control; break;
