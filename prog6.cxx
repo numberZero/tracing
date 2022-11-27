@@ -581,6 +581,14 @@ mat3 rotate(vec3 angle) {
 	return yaw * pitch * roll;
 }
 
+/// Возвращает форму окна (x/y = ширина/высота, x⋅y = 1)
+vec2 getWinShape(GLFWwindow *wnd) {
+	ivec2 size;
+	glfwGetWindowSize(wnd, &size.x, &size.y);
+	vec2 v = vec2(size);
+	return sqrt(vec2{v.x / v.y, v.y / v.x});
+}
+
 void update(GLFWwindow *wnd) {
 	static double t0 = 0.0;
 	double t = active ? glfwGetTime() - t_offset : t_frozen;
@@ -642,98 +650,60 @@ void update(GLFWwindow *wnd) {
 	}
 }
 
-void render() {
-	glEnable(GL_DEPTH_CLAMP);
+void render(GLFWwindow *wnd) {
+	vec2 shape = getWinShape(wnd);
+	ivec2 ihalfsize = 30.0f * shape;
+	ivec2 ipos;
+	double rtt1 = glfwGetTime();
+	glBegin(GL_POINTS);
+	for (ipos.y = -ihalfsize.y; ipos.y < ihalfsize.y; ipos.y++)
+	for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
+		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
+		vec2 spos = shape * wpos;
+		TrackPoint pt;
+		pt.pos = me->loc.pos;
+		pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
+		pt.space = me->loc.space;
+		int n = 0;
+		vec3 p, v;
+		for (;;) {
+			auto traced = pt.space->trace(pt);
+			vec3 endpoint = traced.end.pos;
+			bool hit_a_thing = false;
+			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
+				if (auto t = flat->traceToThing(pt); t.thing) {
+					hit_a_thing = true;
+					endpoint = t.incident.pos;
+				}
+			}
+			if (hit_a_thing) {
+				glColor3f(1, 1, 1);
+				break;
+			}
+			if (traced.to.space) {
+				pt = traced.to;
+			} else {
+				glColor3fv(value_ptr(traced.end.dir * .5f + .5f));
+				break;
+			}
+			if (n++ > settings::trace_limit) {
+				glColor3f(1, 0, 0);
+				break;
+			}
+		}
+		glVertex2fv(value_ptr(wpos));
+		rt_rays++;
+	}
+	glEnd();
+	double rtt2 = glfwGetTime();
+	rt_time += rtt2 - rtt1;
+/*
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
 		{&uni.outer, make_shared<SpaceVisual>(vec3{0.1f, 0.4f, 1.0f})},
 		{&uni.channel, make_shared<ChannelVisual>(vec3{0.4f, 1.0f, 0.1f}, uni.params)},
 		{&uni.side, make_shared<SpaceVisual>(vec3{1.0f, 0.4f, 0.1f})},
 	};
-
-	if (settings::relative_display) {
-		auto &&visual = visuals.at(me->loc.space);
-		vec3 off = visual->where(me->loc.pos);
-		mat4 rmat = transpose(me->loc.rot) * inverse(visual->jacobi(me->loc.pos));
-		glMultMatrixf(value_ptr(rmat));
-		glTranslatef(-off.x, -off.y, -off.z);
-	}
-
-	if (settings::show_sun) {
-		double rtt1 = glfwGetTime();
-		int N = settings::rays / 2;;
-		for (int k = -N; k < N; k++) {
-			float phi = (.5 + k) * (M_PI / N);
-			TrackPoint pt;
-			pt.pos = me->loc.pos;
-			pt.dir = me->loc.rot * vec3(cos(phi), sin(phi), 0.0f);
-			pt.space = me->loc.space;
-			int n = 0;
-			vec3 p, v;
-			glBegin(GL_LINE_STRIP);
-			for (;;) {
-				auto visual = visuals[pt.space];
-				if (settings::show_ray_dirs) {
-					glEnd();
-					glBegin(GL_LINE_STRIP);
-					glColor4f(1, 1, 1, .5);
-					p = visual->where(pt.pos);
-					v = visual->jacobi(pt.pos) * pt.dir;
-					glVertex3fv(value_ptr(p));
-					glVertex3fv(value_ptr(p + v));
-					glEnd();
-					glBegin(GL_LINE_STRIP);
-				}
-				auto traced = pt.space->trace(pt);
-				vec3 endpoint = traced.end.pos;
-				bool hit_a_thing = false;
-				if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
-					if (auto t = flat->traceToThing(pt); t.thing) {
-						hit_a_thing = true;
-						endpoint = t.incident.pos;
-// 						pt = TrackPoint{Ray{
-// 								t.thing->loc.pos + t.thing->loc.rot * t.thingspace_incident.pos,
-// 								t.thing->loc.rot * t.thingspace_incident.dir,
-// 							},
-// 							t.thing->loc.space,
-// 						};
-// 						visual = visuals[pt.space];
-// 						endpoint = pt.pos;
-					}
-				}
-				p = visual->where(endpoint);
-				v = visual->jacobi(endpoint) * pt.dir;
-				glColor4fv(value_ptr(vec4{visual->color, 0.75f}));
-				glVertex3fv(value_ptr(visual->where(pt.pos)));
-				glVertex3fv(value_ptr(p));
-				if (hit_a_thing) {
-					if (settings::show_term_dirs) {
-						glColor3f(1, 1, 0);
-						glVertex3fv(value_ptr(p));
-						glVertex3fv(value_ptr(p + .5f * v));
-					}
-					break;
-				}
-				glVertex3fv(value_ptr(p));
-				if (traced.to.space) {
-					pt = traced.to;
-				} else {
-					glVertex3fv(value_ptr(p + 50.f * v));
-					break;
-				}
-				if (n++ > settings::trace_limit) {
-					glColor3f(1, 0, 0);
-					glVertex3fv(value_ptr(p));
-					glVertex3fv(value_ptr(p + 1.f * v));
-					break;
-				}
-			}
-			glEnd();
-			rt_rays++;
-		}
-		double rtt2 = glfwGetTime();
-		rt_time += rtt2 - rtt1;
-	}
 
 	if (settings::show_thing_frame) {
 		int M = 30;
@@ -810,9 +780,7 @@ void render() {
 		}
 		glEnd();
 	}
-
-	glLoadIdentity();
-
+*/
 	if (settings::mouse_control) {
 		glColor4f(.5f, .5f, .5f, .5f);
 		glBegin(GL_LINES);
@@ -835,21 +803,13 @@ void paint(GLFWwindow* window) {
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glLineWidth(winsize * 0.0085);
+	glPointSize(winsize * 0.085);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_MULTISAMPLE);
 
-	glLoadIdentity();
-	glScalef(0.5f, 0.5f, 0.5f);
-
-	render();
-
-	glLoadIdentity();
-
-	glMatrixMode(GL_PROJECTION);
-	glPushMatrix();
-	glLoadIdentity();
+	render(window);
 
 	glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_ONE);
 	glColor4f(background_lightness, background_lightness, background_lightness, 1.0f);
@@ -859,9 +819,6 @@ void paint(GLFWwindow* window) {
 	glVertex2f(1.0f, 1.0f);
 	glVertex2f(-1.0f, 1.0f);
 	glEnd();
-
-	glPopMatrix();
-	glMatrixMode(GL_MODELVIEW);
 
 	glfwSwapBuffers(window);
 	frames++;
@@ -873,10 +830,6 @@ void initGL() {
 void resized(GLFWwindow* window, int width, int height) {
 	glViewport(0, 0, width, height);
 	::winsize = sqrt(width * height / 2) / 4;
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glScalef(winsize / width, winsize / height, 1.0);
-	glMatrixMode(GL_MODELVIEW);
 }
 
 static const char *title = "Space Refraction 2D v2";
