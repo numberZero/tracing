@@ -68,16 +68,33 @@ public:
 	InwardsBoundary(Params &_params): params(_params) {}
 
 	BoundaryPoint findBoundary(Ray from) const override {
-		const vec3 radius = {params.outer_half_length, params.outer_radius, params.outer_radius};
-		const vec3 d = -sign(from.dir) * radius - from.pos;
-		const vec3 dists = d / from.dir;
-		const vec3 px = from.pos + dists.x * from.dir;
-		const vec3 py = from.pos + dists.y * from.dir;
 		float dist = std::numeric_limits<float>::infinity();
-		if (dists.x > 0.0f && abs(px.y) <= radius.y)
-			dist = dists.x - eps;
-		if (dists.y > 0.0f && abs(py.x) <= radius.x)
-			dist = dists.y - eps;
+
+		{ // Крышки цилиндра
+			const float d = -sign(from.dir.x) * params.outer_half_length - from.pos.x;
+			const float t = d / from.dir.x;
+			const vec3 p = from.pos + t * from.dir;
+			if (t > 0.0f && length(vec2{p.y, p.z}) <= params.outer_radius)
+				dist = t - eps;
+		}
+
+		{ // Боковая стенка цилиндра
+			const vec2 pos = {from.pos.y, from.pos.z};
+			const vec2 dir = {from.dir.y, from.dir.z}; // не единичный!
+			const float t_center = -dot(pos, dir);
+			const float scale = dot(dir, dir);
+			const float off = sqr(params.outer_radius) - dot(pos, pos);
+			if (const float d2 = sqr(t_center) + scale * off; d2 >= 0.0f) {
+				const float t_diff = std::sqrt(d2);
+				const float t = (t_center - t_diff) / scale;
+				if (t >= -eps) {
+					vec3 p = from.pos + t * from.dir;
+					if (abs(p.x) <= params.outer_half_length)
+						dist = t - eps;
+				}
+			}
+		}
+
 		if (!std::isfinite(dist))
 			return {{nullptr, from.pos, from.pos, mat3(1)}, dist};
 		const vec3 pos = from.pos + dist * from.dir;
@@ -85,16 +102,15 @@ public:
 	}
 
 	std::vector<Transition> findOverlaps(vec3 pos, float max_distance) const override {
-		const vec3 radius = {params.outer_half_length, params.outer_radius, params.outer_radius};
 		std::vector<Transition> overlaps;
-		if (all(lessThanEqual(abs(pos), radius + max_distance))) {
-			if (abs(pos.y) - max_distance <= params.inner_radius) {
+		if (length(pos.x) <= params.outer_half_length + max_distance && length(vec2{pos.y, pos.z}) <= params.outer_radius + max_distance) {
+			if (length(vec2{pos.y, pos.z}) - max_distance <= params.inner_radius) {
 				assert(abs(pos.x) >= params.outer_half_length);
 				vec3 into = pos;
 				into.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
 				overlaps.push_back({channel, pos, into, mat3(1)});
 			}
-			if (abs(pos.y) + max_distance >= params.inner_radius) {
+			if (length(vec2{pos.y, pos.z}) + max_distance >= params.inner_radius) {
 				overlaps.push_back({side, pos, pos, mat3(1)});
 			}
 		}
@@ -102,13 +118,12 @@ public:
 	}
 
 	bool contains(vec3 point) const override {
-		const vec3 radius = {params.outer_half_length, params.outer_radius, params.outer_radius};
-		return any(greaterThan(abs(point), radius));
+		return length(point.x) > params.outer_half_length || length(vec2{point.y, point.z}) > params.outer_radius;
 	}
 
 	Transition leave(Ray at) const override {
 		vec3 pos = at.pos;
-		if (abs(pos.y) < params.inner_radius) {
+		if (length(vec2{pos.y, pos.z}) < params.inner_radius) {
 			vec3 into = pos;
 			into.x -= copysign(params.outer_half_length - params.inner_half_length, pos.x);
 			return {channel, pos, into, mat3(1)};
