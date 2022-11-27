@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <memory>
 #include <limits>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 #include <asyncpp/generator.h>
@@ -652,56 +653,70 @@ void update(GLFWwindow *wnd) {
 }
 
 void render(GLFWwindow *wnd) {
-	vec2 shape = getWinShape(wnd);
-	ivec2 ihalfsize = 30.0f * shape;
-	ivec2 ipos;
-	double rtt1 = glfwGetTime();
+	const vec2 shape = getWinShape(wnd);
+	const ivec2 ihalfsize = 30.0f * shape;
+	const double rtt1 = glfwGetTime();
 
 	std::vector<vec4> colors;
 	colors.resize(4 * ihalfsize.x * ihalfsize.y);
 
-	for (ipos.y = -ihalfsize.y; ipos.y < ihalfsize.y; ipos.y++)
-	for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
-		int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
-		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
-		vec2 spos = shape * wpos;
-		TrackPoint pt;
-		pt.pos = me->loc.pos;
-		pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
-		pt.space = me->loc.space;
-		vec4 &color = colors[index];
-		color = {1, 0, 1, 1};
-		for (int n = 0; n < settings::trace_limit; n++) {
-			auto traced = pt.space->trace(pt);
-			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
-				if (auto t = flat->traceToThing(pt); t.thing) {
-					color = vec4{0};
+	const int nthreads = std::thread::hardware_concurrency();
+	std::vector<std::thread> workers;
+	workers.reserve(nthreads);
+
+	auto task = [&] (int k) {
+		ivec2 ipos;
+		for (ipos.y = -ihalfsize.y + k; ipos.y < ihalfsize.y; ipos.y += nthreads)
+		for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
+			int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
+			vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
+			vec2 spos = shape * wpos;
+			TrackPoint pt;
+			pt.pos = me->loc.pos;
+			pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
+			pt.space = me->loc.space;
+			vec4 &color = colors[index];
+			color = {1, 0, 1, 1};
+			for (int n = 0; n < settings::trace_limit; n++) {
+				auto traced = pt.space->trace(pt);
+				if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
+					if (auto t = flat->traceToThing(pt); t.thing) {
+						color = vec4{0};
+						break;
+					}
+				}
+				if (traced.to.space) {
+					pt = traced.to;
+				} else {
+					color = vec4(dirToColor(traced.end.dir), .75);
 					break;
 				}
 			}
-			if (traced.to.space) {
-				pt = traced.to;
-			} else {
-				color = vec4(dirToColor(traced.end.dir), .75);
-				break;
-			}
 		}
-		rt_rays++;
-	}
+	};
+	for (int k = 0; k < nthreads; k++)
+		workers.push_back(std::thread(task, k));
+	for (auto &worker: workers)
+		worker.join();
+
 	double rtt2 = glfwGetTime();
+	rt_rays += colors.size();
 	rt_time += rtt2 - rtt1;
 
 	glLoadIdentity();
-	glBegin(GL_POINTS);
-	for (ipos.y = -ihalfsize.y; ipos.y < ihalfsize.y; ipos.y++)
-	for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
-		int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
-		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
-		vec4 color = colors[index];
-		glColor4fv(value_ptr(color));
-		glVertex2fv(value_ptr(wpos));
+	{
+		glBegin(GL_POINTS);
+		ivec2 ipos;
+		for (ipos.y = -ihalfsize.y; ipos.y < ihalfsize.y; ipos.y++)
+		for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
+			int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
+			vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
+			vec4 color = colors[index];
+			glColor4fv(value_ptr(color));
+			glVertex2fv(value_ptr(wpos));
+		}
+		glEnd();
 	}
-	glEnd();
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
