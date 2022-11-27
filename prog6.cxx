@@ -14,6 +14,7 @@
 #include <GL/glext.h>
 #include "averager.hxx"
 #include "math.hxx"
+#include "texture.hxx"
 #include "shader.hxx"
 #include "io.hxx"
 #include "prog5/glshape.hxx"
@@ -649,11 +650,15 @@ void update(GLFWwindow *wnd) {
 	}
 }
 
-using TextureID = GLuint;
 using ProgramID = GLuint;
 
 namespace prog {
 	ProgramID quad;
+	ProgramID uv_quad;
+}
+
+namespace tex {
+	TextureID env;
 }
 
 void load_shaders() {
@@ -662,6 +667,15 @@ void load_shaders() {
 		compile_shader(GL_GEOMETRY_SHADER, read_file("screen_quad.g.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("simple.f.glsl")),
 	});
+	prog::uv_quad = link_program({
+		compile_shader(GL_VERTEX_SHADER, read_file("empty.v.glsl")),
+		compile_shader(GL_GEOMETRY_SHADER, read_file("screen_quad.g.glsl")),
+		compile_shader(GL_FRAGMENT_SHADER, read_file("screen_quad_cube.f.glsl")),
+	});
+}
+
+void load_textures() {
+	tex::env = load_cube_texture("grid");
 }
 
 void render(GLFWwindow *wnd) {
@@ -693,14 +707,14 @@ void render(GLFWwindow *wnd) {
 				auto traced = pt.space->trace(pt);
 				if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
 					if (auto t = flat->traceToThing(pt); t.thing) {
-						color = vec4{0};
+						color = vec4{0, 0, 0, 1};
 						break;
 					}
 				}
 				if (traced.to.space) {
 					pt = traced.to;
 				} else {
-					color = vec4(dirToColor(traced.end.dir), .75);
+					color = vec4(traced.end.dir, 0);
 					break;
 				}
 			}
@@ -717,10 +731,13 @@ void render(GLFWwindow *wnd) {
 
 	TextureID rt_result = 0;
 	glCreateTextures(GL_TEXTURE_2D, 1, &rt_result);
+	glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
 	glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, colors.data());
-	glUseProgram(prog::quad);
-	glBindTextureUnit(0, rt_result);
+	glUseProgram(prog::uv_quad);
+	glBindTextureUnit(0, tex::env);
+	glBindTextureUnit(1, rt_result);
 	glDrawArrays(GL_POINTS, 0, 1);
 	glUseProgram(0);
 	glDeleteTextures(1, &rt_result);
@@ -833,6 +850,7 @@ void paint(GLFWwindow* window) {
 
 void initGL() {
 	load_shaders();
+	load_textures();
 }
 
 void resized(GLFWwindow* window, int width, int height) {
