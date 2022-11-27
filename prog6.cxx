@@ -13,9 +13,11 @@
 #include <GL/glext.h>
 #include "averager.hxx"
 #include "math.hxx"
+#include "prog5/glshape.hxx"
 #include "prog5/subspace.hxx"
 #include "prog5/thing.hxx"
 #include "prog5/universe.hxx"
+#include "prog5/visual.hxx"
 
 #define TEST 0
 // #define debugf(...) printf(__VA_ARGS__)
@@ -302,23 +304,6 @@ public:
 void test() {
 }
 
-class SpaceVisual {
-public:
-	vec3 color = {0.9f, 0.1f, 0.4f};
-
-	SpaceVisual() = default;
-	SpaceVisual(vec3 color) : color(color) {}
-	virtual ~SpaceVisual() = default;
-
-	virtual vec3 where(vec3 pos) const {
-		return pos;
-	}
-
-	virtual mat3 jacobi(vec3 pos) const {
-		return mat3(1.0f);
-	}
-};
-
 class ChannelVisual: public SpaceVisual {
 public:
 	Params const &params;
@@ -388,25 +373,7 @@ public:
 	}
 
 	void preview(SpaceVisual const *visual) const override {
-		static const int M = 12;
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(visual->where(loc.pos + radius * loc.rot * vec3(cos(phi), sin(phi), 0.0f))));
-		}
-		glEnd();
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(visual->where(loc.pos + radius * loc.rot * vec3(cos(phi), 0.0f, sin(phi)))));
-		}
-		glEnd();
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(visual->where(loc.pos + radius * loc.rot * vec3(0.0f, cos(phi), sin(phi)))));
-		}
-		glEnd();
+		ellipsoid(visual, loc.pos, radius * loc.rot);
 	}
 };
 
@@ -417,6 +384,12 @@ asyncpp::generator<std::pair<vec3, vec3>> edges(std::vector<vec3> const &points)
 		a = b;
 	}
 }
+
+vec3 dirToColor(vec3 dir) {
+	vec3 v = mat3(1, -1, -1, -1, 1, -1, -1, -1, 1) * dir;
+	return .5f + .5f * v / max(abs(v));
+}
+
 /*
 class Polygon: public PreviewableThing {
 public:
@@ -666,9 +639,8 @@ void render(GLFWwindow *wnd) {
 		pt.pos = me->loc.pos;
 		pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
 		pt.space = me->loc.space;
-		int n = 0;
-		vec3 p, v;
-		for (;;) {
+		vec4 color = {1, 0, 1, 1};
+		for (int n = 0; n < settings::trace_limit; n++) {
 			auto traced = pt.space->trace(pt);
 			vec3 endpoint = traced.end.pos;
 			bool hit_a_thing = false;
@@ -679,20 +651,17 @@ void render(GLFWwindow *wnd) {
 				}
 			}
 			if (hit_a_thing) {
-				glColor3f(1, 1, 1);
+				color = {1, 1, 1, 0};
 				break;
 			}
 			if (traced.to.space) {
 				pt = traced.to;
 			} else {
-				glColor3fv(value_ptr(traced.end.dir * .5f + .5f));
-				break;
-			}
-			if (n++ > settings::trace_limit) {
-				glColor3f(1, 0, 0);
+				color = vec4(dirToColor(traced.end.dir), .75);
 				break;
 			}
 		}
+		glColor4fv(value_ptr(color));
 		glVertex2fv(value_ptr(wpos));
 		rt_rays++;
 	}
@@ -723,12 +692,7 @@ void render(GLFWwindow *wnd) {
 			auto &&visual = visuals.at(bnd);
 			for (auto &&info: bnd->things) {
 				glColor3fv(value_ptr(visual->color));
-				glBegin(GL_LINE_LOOP);
-				for (int k = -M; k < M; k++) {
-					float phi = (.5 + k) * (M_PI / M);
-					glVertex2fv(value_ptr(visual->where(info.pos + info.radius * vec3(cos(phi), sin(phi), 0.0f))));
-				}
-				glEnd();
+				ellipsoid(visual.get(), info.pos, info.radius * info.rot);
 			}
 		}
 	}
@@ -744,6 +708,7 @@ void render(GLFWwindow *wnd) {
 		int N = 12;
 		int M = 36;
 		Coefs cs(uni.params);
+		auto *visual = visuals.at(&uni.outer).get();
 		glBegin(GL_LINES);
 		glColor4f(.0f, .9f, .9f, .75f);
 		for (int k = -N; k < N; k++) {
@@ -754,43 +719,13 @@ void render(GLFWwindow *wnd) {
 			glVertex3fv(value_ptr(uni.params.outer_radius * r + uni.params.outer_half_length * l));
 		}
 		glEnd();
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(vec3(-uni.params.outer_half_length, 0.0f, 0.0f) + uni.params.outer_radius * vec3(0.0f, cos(phi), sin(phi))));
-		}
-		glEnd();
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(vec3(+uni.params.outer_half_length, 0.0f, 0.0f) + uni.params.outer_radius * vec3(0.0f, cos(phi), sin(phi))));
-		}
-		glEnd();
+		circleX(visual, vec3(-uni.params.outer_half_length, 0.0f, 0.0f), uni.params.outer_radius);
+		circleX(visual, vec3(uni.params.outer_half_length, 0.0f, 0.0f), uni.params.outer_radius);
 		glColor4f(.0f, .2f, .7f, .75f);
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(vec3(-uni.params.outer_half_length, 0.0f, 0.0f) + uni.params.inner_radius * vec3(0.0f, cos(phi), sin(phi))));
-		}
-		glEnd();
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(vec3(+uni.params.outer_half_length, 0.0f, 0.0f) + uni.params.inner_radius * vec3(0.0f, cos(phi), sin(phi))));
-		}
-		glEnd();
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(vec3(-cs.y1, 0.0f, 0.0f) + uni.params.inner_radius * vec3(0.0f, cos(phi), sin(phi))));
-		}
-		glEnd();
-		glBegin(GL_LINE_LOOP);
-		for (int k = -M; k < M; k++) {
-			float phi = (.5 + k) * (M_PI / M);
-			glVertex3fv(value_ptr(vec3(+cs.y1, 0.0f, 0.0f) + uni.params.inner_radius * vec3(0.0f, cos(phi), sin(phi))));
-		}
-		glEnd();
+		circleX(visual, vec3(-uni.params.outer_half_length, 0.0f, 0.0f), uni.params.inner_radius);
+		circleX(visual, vec3(uni.params.outer_half_length, 0.0f, 0.0f), uni.params.inner_radius);
+		circleX(visual, vec3(-cs.y1, 0.0f, 0.0f), uni.params.inner_radius);
+		circleX(visual, vec3(cs.y1, 0.0f, 0.0f), uni.params.inner_radius);
 	}
 
 	glLoadIdentity();

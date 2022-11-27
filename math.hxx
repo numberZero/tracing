@@ -94,6 +94,32 @@ inline static vec2 cross(vec2 v) {
 	return {-v.y, v.x};
 }
 
+using glm::min, glm::max; // bring in scope
+
+inline static float min(vec2 v) {
+	return min(v.x, v.y);
+}
+
+inline static float min(vec3 v) {
+	return min(min(v.x, v.y), v.z);
+}
+
+inline static float min(vec4 v) {
+	return min(min(v.x, v.y), min(v.z, v.w));
+}
+
+inline static float max(vec2 v) {
+	return max(v.x, v.y);
+}
+
+inline static float max(vec3 v) {
+	return max(max(v.x, v.y), v.z);
+}
+
+inline static float max(vec4 v) {
+	return max(max(v.x, v.y), max(v.z, v.w));
+}
+
 #ifdef DIM
 using vecd = vecn<DIM>; ///< Вектор размерности по умолчанию
 using matd = matn<DIM>; ///< Матрица размерности по умолчанию
