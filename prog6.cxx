@@ -369,7 +369,7 @@ public:
 	}
 
 	float getRadius() const noexcept final override {
-		return 2.0f * radius; // Только для тестирования; на самом деле `return radius` вполне подошёл бы.
+		return radius;
 	}
 
 	void preview(SpaceVisual const *visual) const override {
@@ -406,26 +406,29 @@ public:
 	}
 
 	float hit(Ray ray) const override {
-		Sphere s{radius, loc.space, loc.pos};
-		return s.hit(ray);
-/*
-		vec3 ray_left = cross(ray.dir);
 		float min_dist = std::numeric_limits<float>::infinity();
-		for (auto [a, b]: edges(points)) {
+		for (ivec3 tri: tris) {
+			vec3 a = points[tri.x];
+			vec3 b = points[tri.y];
+			vec3 c = points[tri.z];
+			vec3 n = cross(a, b);
 			vec3 rel_a = a - ray.pos;
 			vec3 rel_b = b - ray.pos;
-			if (dot(ray_left, rel_a) >= 0.0f && dot(ray_left, rel_b) <= 0.0f) {
-				vec3 side_tangent = b - a;
-				vec3 side_normal = cross(side_tangent);
-				float k = -determinant(mat3(a, b));
-				float dist = (k - dot(ray.pos, side_normal)) / dot(ray.dir, side_normal);
+			vec3 rel_c = c - ray.pos;
+			mat3 rel = transpose(mat3{
+				cross(rel_b, rel_c),
+				cross(rel_c, rel_a),
+				cross(rel_a, rel_b),
+			});
+			vec3 flags = rel * ray.dir;
+			if (all(lessThanEqual(flags, vec3(0.0f)))) {
+				float k = dot(a, n); // a⋅n = b⋅n = c⋅n
+				float dist = (k - dot(ray.pos, n)) / dot(ray.dir, n);
 				if (dist >= -eps)
 					min_dist = min(min_dist, dist); // Для выпуклого контура можно было бы сразу `return dist`.
 			}
-			a = b;
 		}
 		return min_dist;
-*/
 	}
 
 	float getRadius() const noexcept final override {
@@ -500,13 +503,15 @@ const float a = .3f, b = 0.5f * a;
 Sphere spheres[] = {
 	{0.15f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
 	{0.45f, &uni.outer, {-(uni.params.outer_half_length + off), 0.5f, 0.0f}},
-	{1.414f * a, &uni.outer, {-(uni.params.outer_half_length + off), -1.0f, 0.0f}},
+	{1.414f * a, &uni.outer, {-(uni.params.outer_half_length + off), -2.0f, 0.0f}},
 };
 Mesh meshes[] = {
-	{{{-a, -a, 0.f}, {0.f, -0.500f * a, 0.f}, {a, -a, 0.f}, {0.f, 1.414f * a, 0.f}, {0.f, -a, -0.500f * a}, {0.f, -a, 0.500f * a}},
-	{{0, 5, 3}, {5, 2, 3}, {2, 4, 3}, {4, 0, 3}, {5, 0, 1}, {2, 5, 1}, {4, 2, 1}, {0, 4, 1}},
-	&uni.outer, {-(uni.params.outer_half_length + off), -1.0f, 0.0f}},
-// 	{{{-a, -a}, {0.f, -0.500f * a}, {a, -a}, {0.f, 1.414f * a}}, &uni.outer, {-A, uni.params.outer_radius + off}},
+	{
+		{{-a, -a, 0.f}, {0.f, -0.500f * a, 0.f}, {a, -a, 0.f}, {0.f, 1.414f * a, 0.f}, {0.f, -a, -0.500f * a}, {0.f, -a, 0.500f * a}},
+// 		{{0, 5, 3}, {5, 2, 3}, {5, 0, 1}, {2, 5, 1}}, // верхняя половина — для тестирования
+		{{0, 5, 3}, {5, 2, 3}, {2, 4, 3}, {4, 0, 3}, {5, 0, 1}, {2, 5, 1}, {4, 2, 1}, {0, 4, 1}},
+		&uni.outer, {-(uni.params.outer_half_length + off), -1.0f, 0.0f}
+	},
 };
 // Thing *me = &polys[0];
 Thing *me = &spheres[2];
@@ -527,7 +532,8 @@ namespace settings {
 	bool show_ray_dirs = false;
 	bool show_sun = true;
 	bool show_frame = true;
-	bool show_thing_frame = false;
+	bool show_previews = true;
+	bool show_thing_frame = true;
 	bool relative_display = true;
 	bool physical_acceleration = false;
 	bool mouse_control = false;
@@ -659,17 +665,11 @@ void render(GLFWwindow *wnd) {
 		vec4 color = {1, 0, 1, 1};
 		for (int n = 0; n < settings::trace_limit; n++) {
 			auto traced = pt.space->trace(pt);
-			vec3 endpoint = traced.end.pos;
-			bool hit_a_thing = false;
 			if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
 				if (auto t = flat->traceToThing(pt); t.thing) {
-					hit_a_thing = true;
-					endpoint = t.incident.pos;
+					color = vec4{0};
+					break;
 				}
-			}
-			if (hit_a_thing) {
-				color = {1, 1, 1, 0};
-				break;
 			}
 			if (traced.to.space) {
 				pt = traced.to;
@@ -714,11 +714,14 @@ void render(GLFWwindow *wnd) {
 		}
 	}
 
-	glColor4f(.8, .8, .8, .75);
-	for (auto *thing: uni.things) {
-		auto &&visual = visuals.at(thing->loc.space);
-		if (auto p = dynamic_cast<PreviewableThing *>(thing))
-			p->preview(visual.get());
+	if (settings::show_previews) {
+		for (auto *thing: uni.things) {
+			auto &&visual = visuals.at(thing->loc.space);
+			if (auto p = dynamic_cast<PreviewableThing *>(thing)) {
+				glColor4f(.8, .8, .8, .75);
+				p->preview(visual.get());
+			}
+		}
 	}
 
 	if (settings::show_frame) {
@@ -857,6 +860,7 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 	case GLFW_KEY_P: settings::physical_acceleration = !settings::physical_acceleration; break;
 	case GLFW_KEY_M: settings::mouse_control = !settings::mouse_control; break;
 	case GLFW_KEY_J: settings::jet_control = !settings::jet_control; break;
+	case GLFW_KEY_K: settings::show_previews = !settings::show_previews; break;
 	}
 }
 
