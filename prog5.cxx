@@ -505,6 +505,7 @@ namespace settings {
 	bool relative_display = true;
 	bool physical_acceleration = false;
 	bool mouse_control = false;
+	bool jet_control = false;
 
 	float movement_acceleration = 6.0f;
 	float movement_speed = 6.0f;
@@ -541,6 +542,8 @@ void update(GLFWwindow *wnd) {
 		if (glfwGetKey(wnd, GLFW_KEY_UP) == GLFW_PRESS) mov += 1.0f;
 		if (glfwGetKey(wnd, GLFW_KEY_DOWN) == GLFW_PRESS) mov -= 1.0f;
 	}
+	if (settings::jet_control)
+		rot *= mov;
 
 	if (settings::physical_acceleration)
 		v += dt * settings::movement_acceleration * vec2(0.0f, mov);
@@ -830,6 +833,8 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 		settings::physical_acceleration = !settings::physical_acceleration;
 	if (key == GLFW_KEY_M)
 		settings::mouse_control = !settings::mouse_control;
+	if (key == GLFW_KEY_J)
+		settings::jet_control = !settings::jet_control;
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
