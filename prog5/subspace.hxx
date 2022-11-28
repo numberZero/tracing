@@ -82,8 +82,8 @@ public:
 #else
 	static constexpr int dim = 2;
 #endif
-	static constexpr float dt = 0.01;
-	static constexpr float eta = 0.02;
+	static constexpr float dt = 0.1;
+	static constexpr float eta = 0.2;
 	inline static int large_steps = 0;
 	inline static int regular_steps = 0;
 

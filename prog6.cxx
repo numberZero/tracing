@@ -32,7 +32,7 @@ using namespace std::literals;
 struct Params {
 	float outer_radius = 3.0f;
 	float inner_radius = 2.0f;
-	float outer_half_length = 5.0f;
+	float outer_half_length = 25.0f;
 	float inner_half_length = 2.0f;
 	float inner_pad = 1.25;
 };
@@ -500,7 +500,7 @@ public:
 };
 
 MyUniverse uni;
-const float off = .5f * uni.params.outer_half_length;
+const float off = 2.5f;
 const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
 const float a = .3f, b = 0.5f * a;
@@ -531,7 +531,7 @@ void init() {
 }
 
 namespace settings {
-	float rays = 30;
+	float rays = 120;
 	int trace_limit = 10;
 	bool show_frame = false;
 	bool show_previews = false;
@@ -751,11 +751,13 @@ void render(GLFWwindow *wnd) {
 
 	glLoadIdentity();
 	{
+		float near = 1e-2;
+		float far = 1e2;
 		auto &&visual = visuals.at(me->loc.space);
 		vec3 off = visual->where(me->loc.pos);
 		mat3 mat = transpose(me->loc.rot) * inverse(visual->jacobi(me->loc.pos));
 		mat = mat3(1, 0, 0, 0, 0, -1, 0, 1, 0) * mat;
-		glFrustum(-shape.x, shape.x, -shape.y, shape.y, 1.0f, 1000.0f);
+		glFrustum(-near * shape.x, near * shape.x, -near * shape.y, near * shape.y, near, far);
 		glMultMatrixf(value_ptr(mat4(mat)));
 		glTranslatef(-off.x, -off.y, -off.z);
 	}
