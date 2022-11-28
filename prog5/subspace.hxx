@@ -45,6 +45,15 @@ struct TraceResult {
 class Subspace {
 public:
 	virtual TraceResult trace(Ray from) const = 0;
+
+	virtual std::vector<TraceResult> trace(std::vector<Ray> from) const {
+		int nrays = from.size();
+		std::vector<TraceResult> result;
+		result.resize(nrays);
+		for (int k = 0; k < nrays; k++)
+			result[k] = trace(from[k]);
+		return result;
+	}
 };
 
 /// Граница пространства
