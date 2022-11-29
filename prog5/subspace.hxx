@@ -19,9 +19,11 @@ struct BoundaryPoint: Transition {
 };
 
 /// Точка с направлением
-struct Ray {
-	vecd pos;	///< Положение точки
-	vecd dir;	///< Направляющий вектор (обязательно единичный!)
+struct alignas(16) Ray {
+	// alignas(8) обеспечивает выравнивание на 16 байт для vec3 и на 8 байт (плотная упаковка) для vec2
+	// FIXME найти способ получше (т. е. заставить GLM поддерживать выравнивание на GCC)
+	alignas(8) vecd pos;	///< Положение точки
+	alignas(8) vecd dir;	///< Направляющий вектор (обязательно единичный!)
 
 	Ray() = default;
 	Ray(Ray const &) = default;

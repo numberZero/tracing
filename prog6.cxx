@@ -18,6 +18,7 @@
 #include "shader.hxx"
 #include "io.hxx"
 #include "prog5/glshape.hxx"
+#include "prog5/gpu.hxx"
 #include "prog5/subspace.hxx"
 #include "prog5/thing.hxx"
 #include "prog5/universe.hxx"
@@ -475,7 +476,7 @@ class MyUniverse: public Universe {
 public:
 	Params params;
 	ThingySubspace outer, channel;
-	RiemannSubspace side;
+	GpuRiemannSubspace side;
 	ChannelSideMetric side_metric{params};
 	SideBoundary sbnd{params};
 	InwardsBoundary ibnd{params};
@@ -657,6 +658,10 @@ namespace prog {
 	ProgramID uv_quad;
 }
 
+namespace comp {
+	ProgramID side;
+}
+
 namespace tex {
 	TextureID env;
 }
@@ -672,6 +677,11 @@ void load_shaders() {
 		compile_shader(GL_GEOMETRY_SHADER, read_file("screen_quad.g.glsl")),
 		compile_shader(GL_FRAGMENT_SHADER, read_file("screen_quad_cube.f.glsl")),
 	});
+	comp::side = link_program({
+		compile_shader(GL_COMPUTE_SHADER, read_file("riemann.c.glsl")),
+		compile_shader(GL_COMPUTE_SHADER, read_file("dmetric.c.glsl")),
+		compile_shader(GL_COMPUTE_SHADER, read_file("side.c.glsl")),
+	});
 }
 
 void load_textures() {
@@ -679,6 +689,19 @@ void load_textures() {
 }
 
 void render(GLFWwindow *wnd) {
+	{
+		struct {
+			Params params;
+			Coefs cs;
+		} data{
+			uni.params,
+			uni.params,
+		};
+		uni.side.prog = comp::side;
+		uni.side.params.resize(sizeof(data));
+		std::memcpy(uni.side.params.data(), &data, sizeof(data));
+	}
+
 	const vec2 shape = getWinShape(wnd);
 	const ivec2 ihalfsize = settings::rays * shape;
 	const double rtt1 = glfwGetTime();
@@ -686,7 +709,7 @@ void render(GLFWwindow *wnd) {
 	std::vector<vec4> colors;
 	colors.resize(4 * ihalfsize.x * ihalfsize.y);
 
-	const int nthreads = std::thread::hardware_concurrency();
+	const int nthreads = 1;//max(1, std::thread::hardware_concurrency());
 	std::vector<std::thread> workers;
 	workers.reserve(nthreads);
 
@@ -718,7 +741,7 @@ void render(GLFWwindow *wnd) {
 					}
 				}
 				if (traced.to.space) {
-					if (dynamic_cast<RiemannSubspace const *>(traced.to.space)) {
+					if (dynamic_cast<GpuRiemannSubspace const *>(traced.to.space)) {
 						jobs.push_back({ipos, traced.to});
 						break;
 					}
@@ -793,10 +816,14 @@ void render(GLFWwindow *wnd) {
 			}
 		}
 	};
-	for (int k = 0; k < nthreads; k++)
-		workers.push_back(std::thread(task, k));
-	for (auto &worker: workers)
-		worker.join();
+	if (nthreads > 1) {
+		for (int k = 0; k < nthreads; k++)
+			workers.push_back(std::thread(task, k));
+		for (auto &worker: workers)
+			worker.join();
+	} else {
+		task(0);
+	}
 
 	double rtt2 = glfwGetTime();
 	rt_rays += colors.size();
