@@ -1025,7 +1025,7 @@ void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsi
 	std::printf("%.*s\n", (int)length, message);
 }
 
-int main() {
+int main() try {
 #if TEST
 	test();
 #else
@@ -1082,4 +1082,8 @@ int main() {
 	}
 	glfwDestroyWindow(wnd);
 #endif
+} catch (char const *str) {
+	fflush(stdout);
+	fprintf(stderr, "Got fatal exception: %s\n", str);
+	throw;
 }
