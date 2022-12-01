@@ -120,7 +120,9 @@ inline static float max(vec4 v) {
 	return max(max(v.x, v.y), max(v.z, v.w));
 }
 
-#ifdef DIM
+#ifndef DIM
+#define DIM 3
+#endif
+
 using vecd = vecn<DIM>; ///< Вектор размерности по умолчанию
 using matd = matn<DIM>; ///< Матрица размерности по умолчанию
-#endif

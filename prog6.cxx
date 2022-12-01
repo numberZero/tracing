@@ -1,4 +1,3 @@
-#undef NDEBUG
 #include <cassert>
 #include <cstdio>
 #include <memory>
