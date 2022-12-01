@@ -305,6 +305,16 @@ public:
 	}
 };
 
+asyncpp::generator<ivec2> irange(ivec2 start, ivec2 stop, ivec2 step = {1, 1}) {
+	for (int y = start.y; y < stop.y; y += step.y)
+	for (int x = start.x; x < stop.x; x += step.x)
+		co_yield {x, y};
+}
+
+asyncpp::generator<ivec2> irange(ivec2 stop) {
+	return irange({}, stop);
+}
+
 void test() {
 }
 
@@ -719,9 +729,7 @@ void render(GLFWwindow *wnd) {
 		};
 		std::vector<Job> jobs;
 		jobs.reserve(ihalfsize.x * ihalfsize.y / nthreads);
-		ivec2 ipos;
-		for (ipos.y = -ihalfsize.y + k; ipos.y < ihalfsize.y; ipos.y += nthreads)
-		for (ipos.x = -ihalfsize.x; ipos.x < ihalfsize.x; ipos.x++) {
+		for (ivec2 ipos: irange(-ihalfsize, ihalfsize, {1, nthreads})) {
 			int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 			vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
 			vec2 spos = shape * wpos;
