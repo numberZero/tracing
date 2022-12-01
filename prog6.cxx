@@ -747,9 +747,8 @@ void render(GLFWwindow *wnd) {
 			batch.indices.push_back(job.at);
 			batch.rays.push_back(job.pt);
 		}
+		jobs.clear();
 
-		std::vector<Job> new_jobs;
-		new_jobs.reserve(jobs.size());
 		for (auto &&[space, batch]: batches) {
 			assert(batch.indices.size() == batch.rays.size());
 			auto results = space->trace(batch.rays);
@@ -773,11 +772,10 @@ void render(GLFWwindow *wnd) {
 				if (end) {
 					colors[at] = color;
 				} else {
-					new_jobs.push_back({at, traced.to});
+					jobs.push_back({at, traced.to});
 				}
 			}
 		}
-		jobs = std::move(new_jobs);
 		if (jobs.empty())
 			break;
 	}
