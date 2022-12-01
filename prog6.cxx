@@ -742,10 +742,9 @@ void render(GLFWwindow *wnd) {
 		};
 		std::unordered_map<Subspace const *, Batch> batches;
 
-		for (int k = 0; k < jobs.size(); k++) {
-			Job const &job = jobs[k];
+		for (auto &&job: jobs) {
 			Batch &batch = batches[job.pt.space];
-			batch.indices.push_back(k);
+			batch.indices.push_back(job.at);
 			batch.rays.push_back(job.pt);
 		}
 
@@ -758,7 +757,6 @@ void render(GLFWwindow *wnd) {
 			assert(results.size() == batch.rays.size());
 			for (int k = 0; k < batch.rays.size(); k++) {
 				auto const &traced = results[k];
-				Job job = jobs[batch.indices[k]];
 				vec4 color;
 				bool end = false;
 				if (!traced.to.space) {
@@ -766,16 +764,16 @@ void render(GLFWwindow *wnd) {
 					end = true;
 				}
 				if (flat) {
-					if (auto t = flat->traceToThing(job.pt); t.thing) {
+					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
 						color = vec4{t.thingspace_incident.pos, 1};
 						end = true;
 					}
 				}
+				int at = batch.indices[k];
 				if (end) {
-					colors[job.at] = color;
+					colors[at] = color;
 				} else {
-					job.pt = traced.to;
-					new_jobs.push_back(job);
+					new_jobs.push_back({at, traced.to});
 				}
 			}
 		}
