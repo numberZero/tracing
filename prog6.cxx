@@ -718,118 +718,70 @@ void render(GLFWwindow *wnd) {
 	std::vector<vec4> colors;
 	colors.resize(4 * ihalfsize.x * ihalfsize.y);
 
-	const int nthreads = 1;//max(1, std::thread::hardware_concurrency());
-	std::vector<std::thread> workers;
-	workers.reserve(nthreads);
+	struct Job {
+		ivec2 at;
+		TrackPoint pt;
+	};
+	std::vector<Job> jobs;
+	jobs.reserve(ihalfsize.x * ihalfsize.y);
+	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
+		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
+		vec2 spos = shape * wpos;
+		TrackPoint pt;
+		pt.pos = me->loc.pos;
+		pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
+		pt.space = me->loc.space;
+		jobs.push_back({ipos, pt});
+	}
 
-	auto task = [&] (int k) {
-		struct Job {
-			ivec2 at;
-			TrackPoint pt;
-		};
-		std::vector<Job> jobs;
-		jobs.reserve(ihalfsize.x * ihalfsize.y / nthreads);
-		for (ivec2 ipos: irange(-ihalfsize, ihalfsize, {1, nthreads})) {
-			int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
-			vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
-			vec2 spos = shape * wpos;
-			TrackPoint pt;
-			pt.pos = me->loc.pos;
-			pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
-			pt.space = me->loc.space;
-			vec4 &color = colors[index];
-			color = {1, 0, 1, 1};
-			for (int n = 0; n < settings::trace_limit; n++) {
-				auto traced = pt.space->trace(pt);
-				if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
-					if (auto t = flat->traceToThing(pt); t.thing) {
-						color = vec4{t.thingspace_incident.pos, 1};
-						break;
-					}
-				}
-				if (traced.to.space) {
-					if (dynamic_cast<GpuRiemannSubspace const *>(traced.to.space)) {
-						jobs.push_back({ipos, traced.to});
-						break;
-					}
-					pt = traced.to;
-				} else {
-					color = vec4(traced.end.dir, 0);
-					break;
-				}
-			}
-		}
-/*
-		for (Job &job: jobs) {
-			auto traced = job.pt.space->trace(job.pt);
-			job.pt = traced.to;
-			if (traced.to.space) {
-				job.pt = traced.to;
-			} else {
-				job.pt = TrackPoint{traced.end, nullptr};
-			}
-		}
-*/
+	for (int n = 0; n < settings::trace_limit; n++) {
 		struct Batch {
 			std::vector<int> indices;
 			std::vector<Ray> rays;
 		};
 		std::unordered_map<Subspace const *, Batch> batches;
+
 		for (int k = 0; k < jobs.size(); k++) {
 			Job const &job = jobs[k];
 			Batch &batch = batches[job.pt.space];
 			batch.indices.push_back(k);
 			batch.rays.push_back(job.pt);
 		}
+
+		std::vector<Job> new_jobs;
+		new_jobs.reserve(jobs.size());
 		for (auto &&[space, batch]: batches) {
 			assert(batch.indices.size() == batch.rays.size());
 			auto results = space->trace(batch.rays);
+			auto flat = dynamic_cast<ThingySubspace const *>(space);
 			assert(results.size() == batch.rays.size());
 			for (int k = 0; k < batch.rays.size(); k++) {
 				auto const &traced = results[k];
-				Job &job = jobs[batch.indices[k]];
-				job.pt = traced.to;
-				if (traced.to.space) {
-					job.pt = traced.to;
-				} else {
-					job.pt = TrackPoint{traced.end, nullptr};
+				Job job = jobs[batch.indices[k]];
+				vec4 color;
+				bool end = false;
+				if (!traced.to.space) {
+					color = vec4(traced.end.dir, 0);
+					end = true;
 				}
-			}
-		}
-/*
-*/
-		for (Job const &job: jobs) {
-			int index = (job.at.y + ihalfsize.y) * 2 * ihalfsize.x + (job.at.x + ihalfsize.x);
-			TrackPoint pt = job.pt;
-			vec4 &color = colors[index];
-			if (!pt.space) {
-				color = vec4(pt.dir, 0);
-				continue;
-			}
-			for (int n = 0; n < settings::trace_limit; n++) {
-				auto traced = pt.space->trace(pt);
-				if (auto flat = dynamic_cast<ThingySubspace const *>(pt.space)) {
-					if (auto t = flat->traceToThing(pt); t.thing) {
+				if (flat) {
+					if (auto t = flat->traceToThing(job.pt); t.thing) {
 						color = vec4{t.thingspace_incident.pos, 1};
-						break;
+						end = true;
 					}
 				}
-				if (traced.to.space) {
-					pt = traced.to;
+				if (end) {
+					int index = (job.at.y + ihalfsize.y) * 2 * ihalfsize.x + (job.at.x + ihalfsize.x);
+					colors[index] = color;
 				} else {
-					color = vec4(traced.end.dir, 0);
-					break;
+					job.pt = traced.to;
+					new_jobs.push_back(job);
 				}
 			}
 		}
-	};
-	if (nthreads > 1) {
-		for (int k = 0; k < nthreads; k++)
-			workers.push_back(std::thread(task, k));
-		for (auto &worker: workers)
-			worker.join();
-	} else {
-		task(0);
+		jobs = std::move(new_jobs);
+		if (jobs.empty())
+			break;
 	}
 
 	double rtt2 = glfwGetTime();
