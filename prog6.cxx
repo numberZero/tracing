@@ -719,19 +719,20 @@ void render(GLFWwindow *wnd) {
 	colors.resize(4 * ihalfsize.x * ihalfsize.y);
 
 	struct Job {
-		ivec2 at;
+		int at;
 		TrackPoint pt;
 	};
 	std::vector<Job> jobs;
 	jobs.reserve(ihalfsize.x * ihalfsize.y);
 	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
+		int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
 		vec2 spos = shape * wpos;
 		TrackPoint pt;
 		pt.pos = me->loc.pos;
 		pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
 		pt.space = me->loc.space;
-		jobs.push_back({ipos, pt});
+		jobs.push_back({index, pt});
 	}
 
 	for (int n = 0; n < settings::trace_limit; n++) {
@@ -771,8 +772,7 @@ void render(GLFWwindow *wnd) {
 					}
 				}
 				if (end) {
-					int index = (job.at.y + ihalfsize.y) * 2 * ihalfsize.x + (job.at.x + ihalfsize.x);
-					colors[index] = color;
+					colors[job.at] = color;
 				} else {
 					job.pt = traced.to;
 					new_jobs.push_back(job);
