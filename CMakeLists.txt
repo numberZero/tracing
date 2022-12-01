@@ -11,7 +11,10 @@ add_subdirectory(asyncpp)
 
 add_compile_definitions(
 	GL_GLEXT_PROTOTYPES
-	)
+	GLM_FORCE_ALIGNED_GENTYPES
+	GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+	GLM_FORCE_INTRINSICS
+)
 
 add_executable(space_refraction
 	main.cxx

@@ -14,11 +14,9 @@ public:
 	ProgramID prog = 0;
 	std::vector<std::byte> params;
 
-	struct alignas(16) OutRay {
-		vec3 pos;
-		float dist;
-		vec3 dir;
-		// float pad;
+	struct OutRay {
+		vec4 pos_dist;
+		vec4 dir_pad;
 	};
 
 	std::vector<TraceResult> trace(std::vector<Ray> from) const override {
@@ -70,11 +68,11 @@ public:
 		result.resize(nrays);
 		for (int k = 0; k < nrays; k++) {
 			OutRay ray = to[k];
-			assert(!map->contains(ray.pos));
 			Ray end;
-			end.pos = ray.pos;
-			end.dir = ray.dir;
-			result[k] = {end, leave(end), ray.dist};
+			end.pos = vec3(ray.pos_dist);
+			end.dir = vec3(ray.dir_pad);
+			assert(!map->contains(end.pos));
+			result[k] = {end, leave(end), ray.pos_dist.w};
 		}
 		return result;
 	}
