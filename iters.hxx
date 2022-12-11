@@ -2,12 +2,23 @@
 #include <asyncpp/generator.h>
 #include <glm/vec2.hpp>
 
-asyncpp::generator<glm::ivec2> irange(glm::ivec2 start, glm::ivec2 stop, glm::ivec2 step = {1, 1}) {
+template <typename T>
+asyncpp::generator<T> irange(T start, T stop, T step = T{1});
+
+template <>
+asyncpp::generator<int> irange<int>(int start, int stop, int step) {
+	for (int x = start; x < stop; x += step)
+		co_yield {x};
+}
+
+template <>
+asyncpp::generator<glm::ivec2> irange<glm::ivec2>(glm::ivec2 start, glm::ivec2 stop, glm::ivec2 step) {
 	for (int y = start.y; y < stop.y; y += step.y)
 	for (int x = start.x; x < stop.x; x += step.x)
 		co_yield {x, y};
 }
 
-asyncpp::generator<glm::ivec2> irange(glm::ivec2 stop) {
-	return irange({}, stop);
+template <typename T>
+asyncpp::generator<T> irange(T stop) {
+	return irange<T>({}, stop);
 }
