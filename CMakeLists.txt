@@ -118,3 +118,15 @@ target_link_libraries(scatter
 	asyncpp
 	fmt
 )
+
+
+add_executable(cubify
+	cubify.cxx
+)
+
+target_link_libraries(cubify
+	asyncpp
+	fmt
+	SDL2
+	SDL2_image
+)
