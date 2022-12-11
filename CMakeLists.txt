@@ -108,3 +108,13 @@ target_link_libraries(prog6
 target_compile_definitions(prog6 PUBLIC
 	DIM=3
 )
+
+
+add_executable(scatter
+	scatter.cxx
+)
+
+target_link_libraries(scatter
+	asyncpp
+	fmt
+)
