@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <thread>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <SDL2/SDL_surface.h>
@@ -62,26 +63,34 @@ int main(int argc, char **argv) {
 		return aa + ba + ab + bb;
 	};
 
+	int const N = std::thread::hardware_concurrency();
+	static Pixel pixels[2 * halfsize][2 * halfsize];
 	auto render_side = [&] (auto dirmaker) -> SDL_Surface * {
-		static Pixel pixels[2 * halfsize][2 * halfsize];
 		SDL_Surface *out = SDL_CreateRGBSurfaceWithFormatFrom(pixels, 2 * halfsize, 2 * halfsize, 32, 2 * sizeof(std::uint32_t) * halfsize, SDL_PIXELFORMAT_RGBA32);
-		for (ivec2 pt: irange(ivec2(2 * halfsize))) {
-			vec3 color{0};
-			for (int _: irange(subsamples)) {
-				vec2 off{dSample(gen), dSample(gen)};
-				vec2 sample = (vec2(pt - halfsize) + off) / float(halfsize);
-				vec3 dir = dirmaker(sample);
-				float phi = atan2f(dir.y, dir.x);
-				float theta = atan2f(dir.z, length(vec2(dir.x, dir.y)));
-				vec2 uv{
-					0.5f + 0.5f * phi / M_PIf32,
-					0.5f + theta / M_PIf32,
-				};
-				color += vec3(interp(uv * vec2(insize)));
+		auto render_lines = [&] (int k) {
+			for (ivec2 pt: irange({0, k}, ivec2(2 * halfsize), {1, N})) {
+				vec3 color{0};
+				for (int _: irange(subsamples)) {
+					vec2 off{dSample(gen), dSample(gen)};
+					vec2 sample = (vec2(pt - halfsize) + off) / float(halfsize);
+					vec3 dir = dirmaker(sample);
+					float phi = atan2f(dir.y, dir.x);
+					float theta = atan2f(dir.z, length(vec2(dir.x, dir.y)));
+					vec2 uv{
+						0.5f + 0.5f * phi / M_PIf32,
+						0.5f + theta / M_PIf32,
+					};
+					color += vec3(interp(uv * vec2(insize)));
+				}
+				uvec4 pdata = clamp(ivec4(256.0f / subsamples * color, 255), 0, 255);
+				pixels[pt.y][pt.x] = pdata;
 			}
-			uvec4 pdata = clamp(ivec4(256.0f / subsamples * color, 255), 0, 255);
-			pixels[pt.y][pt.x] = pdata;
-		}
+		};
+		std::vector<std::thread> threads(N);
+		for (auto &&[k, thread]: enumerate(threads))
+			thread = std::thread(render_lines, k);
+		for (auto &&thread: threads)
+			thread.join();
 		return out;
 	};
 

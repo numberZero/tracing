@@ -129,4 +129,5 @@ target_link_libraries(cubify
 	fmt
 	SDL2
 	SDL2_image
+	Threads::Threads
 )
