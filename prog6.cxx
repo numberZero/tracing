@@ -22,6 +22,7 @@
 #include "prog5/thing.hxx"
 #include "prog5/universe.hxx"
 #include "prog5/visual.hxx"
+#include "iters.hxx"
 
 #define TEST 0
 // #define debugf(...) printf(__VA_ARGS__)
@@ -304,16 +305,6 @@ public:
 		return {channel, at.pos, pos, diagonal(m, 1.0f)};
 	}
 };
-
-asyncpp::generator<ivec2> irange(ivec2 start, ivec2 stop, ivec2 step = {1, 1}) {
-	for (int y = start.y; y < stop.y; y += step.y)
-	for (int x = start.x; x < stop.x; x += step.x)
-		co_yield {x, y};
-}
-
-asyncpp::generator<ivec2> irange(ivec2 stop) {
-	return irange({}, stop);
-}
 
 void test() {
 }
