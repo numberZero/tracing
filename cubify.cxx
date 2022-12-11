@@ -9,16 +9,16 @@
 
 using namespace glm;
 
+using Pixel = glm::tvec4<std::uint8_t>;
 using Dirmaker = vec3(vec2);
 
-Dirmaker *dirmakers[6] = {
-	[] (vec2 uv) -> vec3 { return {1, -uv.y, -uv.x}; },
-	[] (vec2 uv) -> vec3 { return {-1, -uv.y, uv.x}; },
-	[] (vec2 uv) -> vec3 { return {uv.x, 1, uv.y}; },
-	[] (vec2 uv) -> vec3 { return {uv.x, -1, -uv.y}; },
-	[] (vec2 uv) -> vec3 { return {uv.x, -uv.y, 1}; },
-	[] (vec2 uv) -> vec3 { return {-uv.x, -uv.y, -1}; },
-};
+const int halfsize = 1024;
+const int subsamples = 16;
+// const int halfsize = 128;
+// const int subsamples = 4;
+
+static thread_local std::ranlux24 gen;
+static thread_local std::uniform_real_distribution<float> dSample{0.0f, 1.0f};
 
 int main(int argc, char **argv) {
 	if (argc != 3) {
@@ -28,11 +28,6 @@ int main(int argc, char **argv) {
 	char const *input_name = argv[1];
 	char const *output_base = argv[2];
 	int output_namelen = strlen(output_base) + 6;
-
-// 	const int halfsize = 1024;
-// 	const int subsamples = 16;
-	const int halfsize = 128;
-	const int subsamples = 4;
 
 	SDL_Init(0);
 	IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
@@ -44,7 +39,6 @@ int main(int argc, char **argv) {
 		in = copy;
 	}
 
-	using Pixel = glm::tvec4<std::uint8_t>;
 	const Pixel *const inpixels = reinterpret_cast<Pixel *>(in->pixels);
 	const int instride = in->pitch / sizeof(*inpixels);
 	const ivec2 insize = {in->w, in->h};
@@ -56,6 +50,7 @@ int main(int argc, char **argv) {
 		c.y = clamp(c.y, 0, insize.y - 1);
 		return vec4(inpixels[c.x + instride * c.y]) / 256.0f;
 	};
+
 	auto interp = [&] (vec2 c) -> vec4 {
 		vec2 base = floor(c);
 		vec2 b = c - base;
@@ -67,14 +62,9 @@ int main(int argc, char **argv) {
 		return aa + ba + ab + bb;
 	};
 
-	std::ranlux24 gen;
-	std::uniform_real_distribution<float> dSample{0.0f, 1.0f};
-	for (auto [side, dirmaker]: enumerate(dirmakers)) {
-		static glm::tvec4<std::uint8_t> pixels[2 * halfsize][2 * halfsize];
+	auto render_side = [&] (auto dirmaker) -> SDL_Surface * {
+		static Pixel pixels[2 * halfsize][2 * halfsize];
 		SDL_Surface *out = SDL_CreateRGBSurfaceWithFormatFrom(pixels, 2 * halfsize, 2 * halfsize, 32, 2 * sizeof(std::uint32_t) * halfsize, SDL_PIXELFORMAT_RGBA32);
-		char output_name[output_namelen];
-		snprintf(output_name, output_namelen, "%s%d.png", output_base, side);
-		printf("Generating %s\n", output_name);
 		for (ivec2 pt: irange(ivec2(2 * halfsize))) {
 			vec3 color{0};
 			for (int _: irange(subsamples)) {
@@ -92,7 +82,25 @@ int main(int argc, char **argv) {
 			uvec4 pdata = clamp(ivec4(256.0f / subsamples * color, 255), 0, 255);
 			pixels[pt.y][pt.x] = pdata;
 		}
+		return out;
+	};
+
+	auto make_side = [&] (int side, auto dirmaker) {
+		char output_name[output_namelen];
+		snprintf(output_name, output_namelen, "%s%d.png", output_base, side);
+		fprintf(stderr, "Generating side %d\n", side);
+		SDL_Surface *out = render_side(dirmaker);
+		fprintf(stderr, "Saving to %s\n", output_name);
 		IMG_SavePNG(out, output_name);
 		SDL_FreeSurface(out);
-	}
+	};
+
+	make_side(0, [] (vec2 uv) -> vec3 { return {1, -uv.y, -uv.x}; });
+	make_side(1, [] (vec2 uv) -> vec3 { return {-1, -uv.y, uv.x}; });
+	make_side(2, [] (vec2 uv) -> vec3 { return {uv.x, 1, uv.y}; });
+	make_side(3, [] (vec2 uv) -> vec3 { return {uv.x, -1, -uv.y}; });
+	make_side(4, [] (vec2 uv) -> vec3 { return {uv.x, -uv.y, 1}; });
+	make_side(5, [] (vec2 uv) -> vec3 { return {-uv.x, -uv.y, -1}; });
+
+	return 0;
 }
