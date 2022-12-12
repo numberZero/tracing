@@ -36,3 +36,11 @@ static TextureID load_cube_texture(std::string const &basename, GLenum format = 
 	glGenerateTextureMipmap(texture);
 	return texture;
 }
+
+static void load_cube_texture_layer(TextureID texture, int layer, std::string const &basename) {
+	for (int k = 0; k < 6; k++) {
+		png::image<png::rgba_pixel, png::solid_pixel_buffer<png::rgba_pixel>> image(basename + std::to_string(k) + ".png");
+		auto &&data = image.get_pixbuf().get_bytes();
+		glTextureSubImage3D(texture, 0, 0, 0, 6 * layer + k, image.get_width(), image.get_height(), 1, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
+	}
+}

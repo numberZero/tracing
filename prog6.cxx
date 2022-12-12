@@ -663,7 +663,7 @@ namespace comp {
 }
 
 namespace tex {
-	TextureID env;
+	TextureID objs;
 }
 
 void load_shaders() {
@@ -685,7 +685,14 @@ void load_shaders() {
 }
 
 void load_textures() {
-	tex::env = load_cube_texture("grid");
+	unsigned size = 2048;
+	glCreateTextures(GL_TEXTURE_CUBE_MAP_ARRAY, 1, &tex::objs);
+	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_RGBA8, size, size, 6*4);
+	load_cube_texture_layer(tex::objs, 0, "grid");
+	load_cube_texture_layer(tex::objs, 1, "jupiter");
+	load_cube_texture_layer(tex::objs, 2, "saturn");
+	load_cube_texture_layer(tex::objs, 3, "venus");
+	glGenerateTextureMipmap(tex::objs);
 }
 
 void render(GLFWwindow *wnd) {
@@ -782,7 +789,7 @@ void render(GLFWwindow *wnd) {
 	glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
 	glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, colors.data());
 	glUseProgram(prog::uv_quad);
-	glBindTextureUnit(0, tex::env);
+	glBindTextureUnit(0, tex::objs);
 	glBindTextureUnit(1, rt_result);
 	glDrawArrays(GL_POINTS, 0, 1);
 	glUseProgram(0);
@@ -880,6 +887,7 @@ void paint(GLFWwindow* window) {
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_MULTISAMPLE);
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
 	render(window);
 
