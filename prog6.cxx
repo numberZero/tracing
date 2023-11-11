@@ -537,7 +537,7 @@ namespace settings {
 	bool show_frame = false;
 	bool show_previews = false;
 	bool physical_acceleration = false;
-	bool mouse_control = true;
+	bool mouse_control = false;
 	bool jet_control = false;
 
 	float movement_acceleration = 6.0f;
@@ -687,12 +687,14 @@ void load_shaders() {
 void load_textures() {
 	unsigned size = 2048;
 	glCreateTextures(GL_TEXTURE_CUBE_MAP_ARRAY, 1, &tex::objs);
-	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_RGBA8, size, size, 6*4);
+	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_SRGB8_ALPHA8, size, size, 6*4);
 	load_cube_texture_layer(tex::objs, 0, "grid");
 	load_cube_texture_layer(tex::objs, 1, "jupiter");
 	load_cube_texture_layer(tex::objs, 2, "saturn");
 	load_cube_texture_layer(tex::objs, 3, "venus");
 	glGenerateTextureMipmap(tex::objs);
+	glTextureParameteri(tex::objs, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glTextureParameteri(tex::objs, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
 void render(GLFWwindow *wnd) {
@@ -733,7 +735,12 @@ void render(GLFWwindow *wnd) {
 		jobs.push_back({index, pt});
 	}
 
-	for (int n = 0; n < settings::trace_limit; n++) {
+	for (int n = 0; !jobs.empty(); n++) {
+		if (n >= settings::trace_limit) {
+			fprintf(stderr, "Warning: tracing loop aborted with %zu jobs still pending\n", jobs.size());
+			break;
+		}
+
 		struct Batch {
 			std::vector<int> indices;
 			std::vector<Ray> rays;
@@ -774,8 +781,6 @@ void render(GLFWwindow *wnd) {
 				}
 			}
 		}
-		if (jobs.empty())
-			break;
 	}
 
 	double rtt2 = glfwGetTime();
@@ -904,7 +909,35 @@ void paint(GLFWwindow* window) {
 	frames++;
 }
 
+GLint GetNamedFramebufferAttachmentParameter(GLuint framebuffer, GLenum attachment, GLenum pname) {
+	GLint result = 0;
+	glGetNamedFramebufferAttachmentParameteriv(framebuffer, attachment, pname, &result);
+	return result;
+}
+
 void initGL() {
+	glEnable(GL_FRAMEBUFFER_SRGB);
+	for (auto attach: (GLenum[]){GL_FRONT_LEFT, GL_FRONT_RIGHT, GL_BACK_LEFT, GL_BACK_RIGHT, GL_DEPTH, GL_STENCIL}) {
+		printf("Probing %04x...", attach);
+		GLenum type = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+		if (type == GL_NONE) {
+			printf(" absent\n");
+			continue;
+		}
+		GLenum ctype = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE);
+		GLenum enc = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING);
+		printf(" %04x:%04x:%04x", type, enc, ctype);
+
+		int red = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE);
+		int green = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE);
+		int blue = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE);
+		int alpha = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE);
+		int depth = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE);
+		int stencil = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE);
+		printf(" %d:%d:%d:%d:%d:%d\n",red, green, blue, alpha, depth, stencil);
+	}
+// 	exit(0);
+
 	load_shaders();
 	load_textures();
 }
@@ -976,7 +1009,19 @@ void keyed(GLFWwindow *window, int key, int scancode, int action, int mods) {
 }
 
 void APIENTRY debug(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, GLchar const *message, void const *userParam) {
-	std::printf("%.*s\n", (int)length, message);
+	switch (severity) {
+	case GL_DEBUG_SEVERITY_NOTIFICATION:
+		return; // ignore
+	case GL_DEBUG_SEVERITY_LOW:
+		return; // ignore
+	case GL_DEBUG_SEVERITY_MEDIUM:
+		if (type == GL_DEBUG_TYPE_PERFORMANCE)
+			return; // ignore anyway, they’re useless
+		break; // show
+	case GL_DEBUG_SEVERITY_HIGH:
+		break; // show
+	}
+	std::fprintf(stderr, "%04x->%04x(%04x) %08x: %.*s\n", source, type, severity, id, (int)length, message);
 }
 
 int main() try {
