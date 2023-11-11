@@ -31,11 +31,11 @@
 using namespace std::literals;
 
 struct Params {
-	float outer_radius = 3.0f;
-	float inner_radius = 2.0f;
-	float outer_half_length = 25.0f;
-	float inner_half_length = 2.0f;
-	float inner_pad = 1.25;
+	float outer_radius = 5.0f;
+	float inner_radius = 4.0f;
+	float outer_half_length = 1500.0f;
+	float inner_half_length = 100.0f;
+	float inner_pad = 0.25f;
 };
 
 struct Coefs {
@@ -47,7 +47,7 @@ struct Coefs {
 
 		x2 = params.inner_half_length;
 		y2 = params.outer_half_length;
-		x1 = params.inner_half_length - params.inner_pad;
+		x1 = params.inner_half_length * (1.0f - params.inner_pad);
 
 		if (y2 - x2 < eps) {
 			if (y2 - x2 < -eps)
@@ -506,10 +506,10 @@ const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
 const float a = .3f, b = 0.5f * a;
 Sphere spheres[] = {
-	{1.414f * a, &uni.outer, {-(uni.params.outer_half_length + off), -2.0f, 0.0f}},
+	{1.414f * a, &uni.outer, {(uni.params.outer_half_length + off), -2.0f, 0.0f}},
 	{0.25f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
 	{0.10f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f, 0.0f}},
-	{0.10f, &uni.outer, {(uni.params.outer_half_length + off), 0.0f, 0.0f}},
+	{300.0f, &uni.outer, {(uni.params.outer_half_length + 320.0f), -100.0f, 0.0f}},
 };
 Mesh meshes[] = {
 	{
@@ -641,7 +641,7 @@ void update(GLFWwindow *wnd) {
 		v -= dt * omega * omega * x;
 		x += dt * v;
 		uni.params.inner_half_length = 3.0f + 2.0f * x;
-		uni.params.inner_pad = 0.25f * uni.params.inner_half_length;
+		uni.params.inner_pad = 0.25f;
 	}
 	try {
 		uni.updateCaches();
