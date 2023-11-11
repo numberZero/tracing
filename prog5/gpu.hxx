@@ -43,7 +43,7 @@ public:
 		BufferID bOut = bufs[1];
 		BufferID bParams = bufs[2];
 		glNamedBufferStorage(bIn, sizeof(from[0]) * from.size(), from.data(), 0);
-		glNamedBufferStorage(bOut, sizeof(OutRay) * from.size(), nullptr, 0);
+		glNamedBufferStorage(bOut, sizeof(OutRay) * from.size(), nullptr, GL_MAP_READ_BIT);
 		glNamedBufferStorage(bParams, dParams.size(), dParams.data(), 0);
 
 		glUseProgram(prog);
@@ -57,12 +57,8 @@ public:
 		glBindBufferBase(GL_UNIFORM_BUFFER, 2, 0);
 		glUseProgram(0);
 
-		std::vector<OutRay> to;
-		to.resize(nrays);
 		glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
-		glGetNamedBufferSubData(bOut, 0, sizeof(to[0]) * to.size(), to.data());
-
-		glDeleteBuffers(3, bufs);
+		const auto *to = reinterpret_cast<OutRay *>(glMapNamedBuffer(bOut, GL_READ_ONLY));
 
 		std::vector<TraceResult> result;
 		result.resize(nrays);
@@ -74,6 +70,9 @@ public:
 			assert(!map->contains(end.pos));
 			result[k] = {end, leave(end), ray.pos_dist.w};
 		}
+
+		glUnmapNamedBuffer(bOut);
+		glDeleteBuffers(3, bufs);
 		return result;
 	}
 };
