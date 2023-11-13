@@ -778,11 +778,10 @@ void render(GLFWwindow *wnd) {
 					uvws[at] = vec4(traced.end.dir, 0);
 					end = true;
 				}
-				if (flat) {
+				if (flat && !objects_mask[at]) {
 					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
 						objects_mask[at] = 1;
-						// colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.thingspace_incident.pos), 1.0f};
-						// end = true;
+						colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.thingspace_incident.pos), 1.0f};
 					}
 				}
 				if (!end) {
@@ -797,17 +796,19 @@ void render(GLFWwindow *wnd) {
 	for (ivec2 ipos: irange(-ihalfsize + 1, ihalfsize - 1)) {
 		int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 		objects_mask_2[index] = objects_mask[index]
-			|| objects_mask[index - 1]
-			|| objects_mask[index + 1]
-			|| objects_mask[index - 2 * ihalfsize.x]
-			|| objects_mask[index + 2 * ihalfsize.x];
+			+ objects_mask[index - 1]
+			+ objects_mask[index + 1]
+			+ objects_mask[index - 2 * ihalfsize.x]
+			+ objects_mask[index + 2 * ihalfsize.x];
 	}
 
 	jobs.clear();
 	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
 		int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
-		if (!objects_mask_2[coarse_index])
+		int mask = objects_mask_2[coarse_index];
+		if (mask == 0 || mask == 5)
 			continue;
+		colors[coarse_index] = {};
 		for (ivec2 sub: irange(ivec2(settings::refine))) {
 			const ivec2 fine_ipos = settings::refine * (ihalfsize + ipos) + sub;
 			const int fine_index = fine_size.x * fine_ipos.y + fine_ipos.x;
@@ -883,7 +884,7 @@ void render(GLFWwindow *wnd) {
 	glDisable(GL_BLEND);
 	glDrawArrays(GL_POINTS, 0, 1);
 	glDeleteTextures(1, &rt_result);
-/*
+
 	TextureID rt_colors = 0;
 	glCreateTextures(GL_TEXTURE_2D, 1, &rt_colors);
 	glTextureParameteri(rt_colors,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -897,7 +898,7 @@ void render(GLFWwindow *wnd) {
 	glUseProgram(prog::quad);
 	glDrawArrays(GL_POINTS, 0, 1);
 	glDeleteTextures(1, &rt_colors);
-*/
+
 	TextureID rt_fine_colors = 0;
 	glCreateTextures(GL_TEXTURE_2D, 1, &rt_fine_colors);
 	glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
