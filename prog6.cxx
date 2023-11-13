@@ -359,19 +359,19 @@ public:
 		};
 	}
 
-	float hit(Ray ray) const override {
+	ThingHit hit(Ray ray) const override {
 		const vec3 rel = -ray.pos;
 		const float t_center = -dot(ray.pos, ray.dir);
 		const float d2 = dot(rel, rel) - sqr(t_center);
 		if (d2 > sqr(radius))
-			return std::numeric_limits<float>::infinity();
+			return {};
 		const float t_diff = std::sqrt(sqr(radius) - d2);
 		const float t_near = t_center - t_diff;
 		const float t_far = t_center + t_diff;
-		if (t_near >= -eps)
-			return t_near;
-		else
-			return std::numeric_limits<float>::infinity();
+		if (t_near < -eps)
+			return {};
+		auto pos = ray.pos + t_near * ray.dir;
+		return {pos, t_near, pos / radius};
 	}
 
 	float getRadius() const noexcept final override {
@@ -412,8 +412,9 @@ public:
 			radius = max(radius, length(p));
 	}
 
-	float hit(Ray ray) const override {
+	ThingHit hit(Ray ray) const override {
 		float min_dist = std::numeric_limits<float>::infinity();
+		vec3 normal = {};
 		for (ivec3 tri: tris) {
 			vec3 a = points[tri.x];
 			vec3 b = points[tri.y];
@@ -431,11 +432,15 @@ public:
 			if (all(lessThanEqual(flags, vec3(0.0f)))) {
 				float k = dot(a, n); // a⋅n = b⋅n = c⋅n
 				float dist = (k - dot(ray.pos, n)) / dot(ray.dir, n);
-				if (dist >= -eps)
-					min_dist = min(min_dist, dist); // Для выпуклого контура можно было бы сразу `return dist`.
+				if (dist < -eps)
+					continue;
+				if (dist >= min_dist)
+					continue;
+				min_dist = dist; // Для выпуклого контура можно было бы сразу `return dist`.
+				normal = n;
 			}
 		}
-		return min_dist;
+		return {ray.pos + min_dist * ray.dir, min_dist, normal};
 	}
 
 	float getRadius() const noexcept final override {
@@ -781,7 +786,7 @@ void render(GLFWwindow *wnd) {
 				if (flat && !objects_mask[at]) {
 					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
 						objects_mask[at] = 1;
-						colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.thingspace_incident.pos), 1.0f};
+						colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.normal), 1.0f};
 					}
 				}
 				if (!end) {
@@ -856,7 +861,7 @@ void render(GLFWwindow *wnd) {
 				}
 				if (flat) {
 					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
-						fine_colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.thingspace_incident.pos), 1.0f};
+						fine_colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.normal), 1.0f};
 						end = true;
 					}
 				}

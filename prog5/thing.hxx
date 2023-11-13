@@ -16,11 +16,17 @@ public:
 	virtual std::vector<Transition> findOverlaps(vecd pos, float max_distance) const = 0;
 };
 
+struct ThingHit {
+	vec3 position = {};
+	float distance = std::numeric_limits<float>::infinity();
+	vec3 normal = {};
+};
+
 class Thing {
 public:
 	Location loc; ///< Текущее положение центра
 	uint32_t id;
-	virtual float hit(Ray ray) const = 0;
+	virtual ThingHit hit(Ray ray) const = 0;
 	virtual float getRadius() const noexcept = 0;
 	void move(vecd off);
 	void rotate(matd rot);
@@ -37,6 +43,7 @@ struct ThingTraceResult {
 	Thing const *thing = nullptr;
 	Ray incident;
 	Ray thingspace_incident;
+	vec3 normal;
 	float distance;
 };
 
@@ -76,17 +83,18 @@ public:
 		float max_dist = t.into ? distance(ray.pos, t.atPos) : std::numeric_limits<float>::infinity();
 		for (auto &&info: findThingsOnRay(ray)) {
 			const matd rot = transpose(info.rot);
-			const float dist = info.thing->hit({rot * (ray.pos - info.pos), rot * ray.dir});
-			if (dist < max_dist) {
-				max_dist = dist;
-				const vecd pos = ray.pos + dist * ray.dir;
-				result = {
-					.thing = info.thing,
-					.incident = {pos, ray.dir},
-					.thingspace_incident = {rot * (pos - info.pos), rot * ray.dir},
-					.distance = dist,
-				};
-			}
+			const auto hit = info.thing->hit({rot * (ray.pos - info.pos), rot * ray.dir});
+			if (hit.distance >= max_dist)
+				continue;
+			max_dist = hit.distance;
+			const vecd pos = ray.pos + hit.distance * ray.dir;
+			result = {
+				.thing = info.thing,
+				.incident = {pos, ray.dir},
+				.thingspace_incident = {hit.position, rot * ray.dir},
+				.normal = info.rot * hit.normal,
+				.distance = hit.distance,
+			};
 		}
 		return result;
 	}
