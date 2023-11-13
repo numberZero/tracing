@@ -19,6 +19,7 @@ public:
 class Thing {
 public:
 	Location loc; ///< Текущее положение центра
+	uint32_t id;
 	virtual float hit(Ray ray) const = 0;
 	virtual float getRadius() const noexcept = 0;
 	void move(vecd off);

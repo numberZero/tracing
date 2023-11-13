@@ -349,7 +349,8 @@ public:
 	float radius;
 
 	Sphere() = default;
-	Sphere(float _radius, ThingySubspace const *space, vec3 pos) {
+	Sphere(uint32_t _id, float _radius, ThingySubspace const *space, vec3 pos) {
+		id = _id;
 		radius = _radius;
 		loc = {
 			space,
@@ -397,7 +398,8 @@ vec3 dirToColor(vec3 dir) {
 
 class Mesh: public PreviewableThing {
 public:
-	Mesh(std::vector<vec3> _points, std::vector<ivec3> _tris, ThingySubspace const *space, vec3 pos) {
+	Mesh(uint32_t _id, std::vector<vec3> _points, std::vector<ivec3> _tris, ThingySubspace const *space, vec3 pos) {
+		id = _id;
 		loc = {
 			space,
 			pos,
@@ -506,13 +508,14 @@ const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
 const float a = .3f, b = 0.5f * a;
 Sphere spheres[] = {
-	{1.414f * a, &uni.outer, {(uni.params.outer_half_length + off), -2.0f, 0.0f}},
-	{0.25f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
-	{0.10f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f, 0.0f}},
-	{300.0f, &uni.outer, {(uni.params.outer_half_length + 320.0f), -100.0f, 0.0f}},
+	{0, 1.414f * a, &uni.outer, {-(uni.params.outer_half_length + off), -2.0f, 0.0f}},
+	// {0.25f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
+	// {0.10f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f, 0.0f}},
+	{1, 300.0f, &uni.outer, {(uni.params.outer_half_length + 320.0f), -100.0f, 0.0f}},
 };
 Mesh meshes[] = {
 	{
+		2,
 		{{-a, -a, 0.f}, {0.f, -0.500f * a, 0.f}, {a, -a, 0.f}, {0.f, 1.414f * a, 0.f}, {0.f, -a, -0.500f * a}, {0.f, -a, 0.500f * a}},
 // 		{{0, 5, 3}, {5, 2, 3}, {5, 0, 1}, {2, 5, 1}}, // верхняя половина — для тестирования
 		{{0, 5, 3}, {5, 2, 3}, {2, 4, 3}, {4, 0, 3}, {5, 0, 1}, {2, 5, 1}, {4, 2, 1}, {0, 4, 1}},
@@ -769,7 +772,7 @@ void render(GLFWwindow *wnd) {
 				}
 				if (flat) {
 					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
-						color = vec4{t.thingspace_incident.pos, 1};
+						color = vec4{t.thingspace_incident.pos, t.thing->id};
 						end = true;
 					}
 				}
