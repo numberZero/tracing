@@ -440,7 +440,7 @@ public:
 				normal = n;
 			}
 		}
-		return {ray.pos + min_dist * ray.dir, min_dist, normal};
+		return {ray.pos + min_dist * ray.dir, min_dist, normalize(normal)};
 	}
 
 	float getRadius() const noexcept final override {
