@@ -750,9 +750,15 @@ void trace(std::vector<Job> jobs, vec4 *uvws, vec4 *colors, char *mask) {
 						if (mask)
 							mask[at] = 1;
 						if (colors)
-							colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.normal), 1.0f};
-						if (!uvws)
-							end = true;
+							colors[at] = {};//0.5f * vec4{0.5f + 0.5f * glm::normalize(t.normal), 1.0f};
+						if (uvws) {
+							TrackPoint pt;
+							pt.space = flat;
+							pt.pos = t.incident.pos;
+							pt.dir = glm::reflect(t.incident.dir, t.normal);
+							jobs.push_back({at, pt});
+						}
+						end = true;
 					}
 				}
 				if (!end) {
