@@ -706,6 +706,63 @@ void load_textures() {
 	glTextureParameteri(tex::objs, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
+struct Job {
+	int at;
+	TrackPoint pt;
+};
+
+void trace(std::vector<Job> jobs, vec4 *uvws, vec4 *colors, char *mask) {
+	for (int n = 0; !jobs.empty(); n++) {
+		if (n >= settings::trace_limit) {
+			fprintf(stderr, "Warning: tracing loop aborted with %zu jobs still pending\n", jobs.size());
+			break;
+		}
+
+		struct Batch {
+			std::vector<int> indices;
+			std::vector<Ray> rays;
+		};
+		std::unordered_map<Subspace const *, Batch> batches;
+
+		for (auto &&job: jobs) {
+			Batch &batch = batches[job.pt.space];
+			batch.indices.push_back(job.at);
+			batch.rays.push_back(job.pt);
+		}
+		jobs.clear();
+
+		for (auto &&[space, batch]: batches) {
+			assert(batch.indices.size() == batch.rays.size());
+			auto results = space->trace(batch.rays);
+			auto flat = dynamic_cast<ThingySubspace const *>(space);
+			assert(results.size() == batch.rays.size());
+			for (int k = 0; k < batch.rays.size(); k++) {
+				const int at = batch.indices[k];
+				auto const &traced = results[k];
+				bool end = false;
+				if (!traced.to.space) {
+					if (uvws)
+						uvws[at] = vec4(traced.end.dir, 0);
+					end = true;
+				}
+				if (flat && (!mask || !mask[at])) {
+					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
+						if (mask)
+							mask[at] = 1;
+						if (colors)
+							colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.normal), 1.0f};
+						if (!uvws)
+							end = true;
+					}
+				}
+				if (!end) {
+					jobs.push_back({at, traced.to});
+				}
+			}
+		}
+	}
+}
+
 void render(GLFWwindow *wnd) {
 	{
 		struct {
@@ -734,10 +791,6 @@ void render(GLFWwindow *wnd) {
 	colors.resize(4 * ihalfsize.x * ihalfsize.y);
 	fine_colors.resize(fine_size.x * fine_size.y);
 
-	struct Job {
-		int at;
-		TrackPoint pt;
-	};
 	std::vector<Job> jobs;
 	jobs.reserve(ihalfsize.x * ihalfsize.y);
 	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
@@ -750,51 +803,8 @@ void render(GLFWwindow *wnd) {
 		pt.space = me->loc.space;
 		jobs.push_back({index, pt});
 	}
-
-	for (int n = 0; !jobs.empty(); n++) {
-		if (n >= settings::trace_limit) {
-			fprintf(stderr, "Warning: tracing loop aborted with %zu jobs still pending\n", jobs.size());
-			break;
-		}
-
-		struct Batch {
-			std::vector<int> indices;
-			std::vector<Ray> rays;
-		};
-		std::unordered_map<Subspace const *, Batch> batches;
-
-		for (auto &&job: jobs) {
-			Batch &batch = batches[job.pt.space];
-			batch.indices.push_back(job.at);
-			batch.rays.push_back(job.pt);
-		}
-		jobs.clear();
-
-		for (auto &&[space, batch]: batches) {
-			assert(batch.indices.size() == batch.rays.size());
-			auto results = space->trace(batch.rays);
-			auto flat = dynamic_cast<ThingySubspace const *>(space);
-			assert(results.size() == batch.rays.size());
-			for (int k = 0; k < batch.rays.size(); k++) {
-				const int at = batch.indices[k];
-				auto const &traced = results[k];
-				bool end = false;
-				if (!traced.to.space) {
-					uvws[at] = vec4(traced.end.dir, 0);
-					end = true;
-				}
-				if (flat && !objects_mask[at]) {
-					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
-						objects_mask[at] = 1;
-						colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.normal), 1.0f};
-					}
-				}
-				if (!end) {
-					jobs.push_back({at, traced.to});
-				}
-			}
-		}
-	}
+	trace(std::move(jobs), uvws.data(), colors.data(), objects_mask.data());
+	jobs.clear();
 
 	std::vector<char> objects_mask_2;
 	objects_mask_2.resize(objects_mask.size());
@@ -807,7 +817,6 @@ void render(GLFWwindow *wnd) {
 			+ objects_mask[index + 2 * ihalfsize.x];
 	}
 
-	jobs.clear();
 	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
 		int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 		int mask = objects_mask_2[coarse_index];
@@ -827,50 +836,8 @@ void render(GLFWwindow *wnd) {
 			jobs.push_back({fine_index, pt});
 		}
 	}
-
-	for (int n = 0; !jobs.empty(); n++) {
-		if (n >= settings::trace_limit) {
-			fprintf(stderr, "Warning: tracing loop aborted with %zu jobs still pending\n", jobs.size());
-			break;
-		}
-
-		struct Batch {
-			std::vector<int> indices;
-			std::vector<Ray> rays;
-		};
-		std::unordered_map<Subspace const *, Batch> batches;
-
-		for (auto &&job: jobs) {
-			Batch &batch = batches[job.pt.space];
-			batch.indices.push_back(job.at);
-			batch.rays.push_back(job.pt);
-		}
-		jobs.clear();
-
-		for (auto &&[space, batch]: batches) {
-			assert(batch.indices.size() == batch.rays.size());
-			auto results = space->trace(batch.rays);
-			auto flat = dynamic_cast<ThingySubspace const *>(space);
-			assert(results.size() == batch.rays.size());
-			for (int k = 0; k < batch.rays.size(); k++) {
-				const int at = batch.indices[k];
-				auto const &traced = results[k];
-				bool end = false;
-				if (!traced.to.space) {
-					end = true;
-				}
-				if (flat) {
-					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
-						fine_colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.normal), 1.0f};
-						end = true;
-					}
-				}
-				if (!end) {
-					jobs.push_back({at, traced.to});
-				}
-			}
-		}
-	}
+	trace(std::move(jobs), nullptr, fine_colors.data(), nullptr);
+	jobs.clear();
 
 	double rtt2 = glfwGetTime();
 	rt_rays += uvws.size();
