@@ -718,8 +718,8 @@ void render(GLFWwindow *wnd) {
 	const ivec2 ihalfsize = settings::rays * shape;
 	const double rtt1 = glfwGetTime();
 
-	std::vector<vec4> colors;
-	colors.resize(4 * ihalfsize.x * ihalfsize.y);
+	std::vector<vec4> uvws;
+	uvws.resize(4 * ihalfsize.x * ihalfsize.y);
 
 	struct Job {
 		int at;
@@ -764,21 +764,21 @@ void render(GLFWwindow *wnd) {
 			assert(results.size() == batch.rays.size());
 			for (int k = 0; k < batch.rays.size(); k++) {
 				auto const &traced = results[k];
-				vec4 color;
+				vec4 uvw;
 				bool end = false;
 				if (!traced.to.space) {
-					color = vec4(traced.end.dir, 0);
+					uvw = vec4(traced.end.dir, 0);
 					end = true;
 				}
 				if (flat) {
 					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
-						color = vec4{t.thingspace_incident.pos, t.thing->id};
+						uvw = vec4{t.thingspace_incident.pos, t.thing->id};
 						end = true;
 					}
 				}
 				int at = batch.indices[k];
 				if (end) {
-					colors[at] = color;
+					uvws[at] = uvw;
 				} else {
 					jobs.push_back({at, traced.to});
 				}
@@ -787,7 +787,7 @@ void render(GLFWwindow *wnd) {
 	}
 
 	double rtt2 = glfwGetTime();
-	rt_rays += colors.size();
+	rt_rays += uvws.size();
 	rt_time += rtt2 - rtt1;
 
 	TextureID rt_result = 0;
@@ -795,7 +795,7 @@ void render(GLFWwindow *wnd) {
 	glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
-	glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, colors.data());
+	glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, uvws.data());
 	glUseProgram(prog::uv_quad);
 	glBindTextureUnit(0, tex::objs);
 	glBindTextureUnit(1, rt_result);
