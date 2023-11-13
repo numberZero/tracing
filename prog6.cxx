@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <memory>
 #include <limits>
+#include <random>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -711,7 +712,31 @@ struct Job {
 	TrackPoint pt;
 };
 
+class ball_distribution {
+public:
+	ball_distribution(float _radius = 1.0f) : radius(_radius), inner(-1.0f, 1.0f) {}
+
+	template <typename Generator>
+	glm::vec3 operator()(Generator &gen) {
+		for (;;) {
+			glm::vec3 v{inner(gen), inner(gen), inner(gen)};
+			float len = glm::length(v);
+			if (len <= 1.0f && len >= 1e-3) {
+				return radius * v;
+			}
+		}
+	}
+
+	float radius;
+
+private:
+	std::uniform_real_distribution<float> inner;
+};
+
 void trace(std::vector<Job> jobs, vec4 *uvws, vec4 *colors, char *mask) {
+	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
+	ball_distribution metal{0.5f};
+	ball_distribution plastic{1.0f};
 	for (int n = 0; !jobs.empty(); n++) {
 		if (n >= settings::trace_limit) {
 			fprintf(stderr, "Warning: tracing loop aborted with %zu jobs still pending\n", jobs.size());
@@ -755,7 +780,10 @@ void trace(std::vector<Job> jobs, vec4 *uvws, vec4 *colors, char *mask) {
 							TrackPoint pt;
 							pt.space = flat;
 							pt.pos = t.incident.pos;
-							pt.dir = glm::reflect(t.incident.dir, t.normal);
+							// pt.dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
+							pt.dir = normalize(plastic(gen));
+							if (dot(pt.dir, t.normal) < 0.0f)
+								pt.dir -= 2.0f * t.normal * dot(pt.dir, t.normal);
 							jobs.push_back({at, pt});
 						}
 						end = true;
