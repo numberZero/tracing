@@ -719,7 +719,9 @@ void render(GLFWwindow *wnd) {
 	const double rtt1 = glfwGetTime();
 
 	std::vector<vec4> uvws;
+	std::vector<vec4> colors;
 	uvws.resize(4 * ihalfsize.x * ihalfsize.y);
+	colors.resize(4 * ihalfsize.x * ihalfsize.y);
 
 	struct Job {
 		int at;
@@ -763,23 +765,20 @@ void render(GLFWwindow *wnd) {
 			auto flat = dynamic_cast<ThingySubspace const *>(space);
 			assert(results.size() == batch.rays.size());
 			for (int k = 0; k < batch.rays.size(); k++) {
+				const int at = batch.indices[k];
 				auto const &traced = results[k];
-				vec4 uvw;
 				bool end = false;
 				if (!traced.to.space) {
-					uvw = vec4(traced.end.dir, 0);
+					uvws[at] = vec4(traced.end.dir, 0);
 					end = true;
 				}
 				if (flat) {
 					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
-						uvw = vec4{t.thingspace_incident.pos, t.thing->id};
+						colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.thingspace_incident.pos), 1.0f};
 						end = true;
 					}
 				}
-				int at = batch.indices[k];
-				if (end) {
-					uvws[at] = uvw;
-				} else {
+				if (!end) {
 					jobs.push_back({at, traced.to});
 				}
 			}
@@ -794,14 +793,31 @@ void render(GLFWwindow *wnd) {
 	glCreateTextures(GL_TEXTURE_2D, 1, &rt_result);
 	glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(rt_result,  GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
 	glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, uvws.data());
 	glUseProgram(prog::uv_quad);
 	glBindTextureUnit(0, tex::objs);
 	glBindTextureUnit(1, rt_result);
+	glDisable(GL_BLEND);
 	glDrawArrays(GL_POINTS, 0, 1);
-	glUseProgram(0);
 	glDeleteTextures(1, &rt_result);
+
+	TextureID rt_colors = 0;
+	glCreateTextures(GL_TEXTURE_2D, 1, &rt_colors);
+	glTextureParameteri(rt_colors,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(rt_colors,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(rt_colors,  GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTextureStorage2D(rt_colors, 1, GL_RGBA8, 2 * ihalfsize.x, 2 * ihalfsize.y);
+	glTextureSubImage2D(rt_colors, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, colors.data());
+	glBindTextureUnit(0, rt_colors);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	glUseProgram(prog::quad);
+	glDrawArrays(GL_POINTS, 0, 1);
+	glDeleteTextures(1, &rt_colors);
+
+	glUseProgram(0);
 
 	std::unordered_map<Subspace const *, shared_ptr<SpaceVisual>> visuals = {
 		{nullptr, make_shared<SpaceVisual>(vec3{1.0f, 0.1f, 0.4f})},
