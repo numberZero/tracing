@@ -996,15 +996,6 @@ void paint(GLFWwindow* window) {
 
 	render(window);
 
-	glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_ONE);
-	glColor4f(background_lightness, background_lightness, background_lightness, 1.0f);
-	glBegin(GL_QUADS);
-	glVertex2f(-1.0f, -1.0f);
-	glVertex2f(1.0f, -1.0f);
-	glVertex2f(1.0f, 1.0f);
-	glVertex2f(-1.0f, 1.0f);
-	glEnd();
-
 	glfwSwapBuffers(window);
 	frames++;
 }
