@@ -536,6 +536,7 @@ void init() {
 
 namespace settings {
 	float rays = 120;
+	int refine = 4;
 	int trace_limit = 10;
 	bool show_frame = false;
 	bool show_previews = false;
@@ -716,12 +717,15 @@ void render(GLFWwindow *wnd) {
 
 	const vec2 shape = getWinShape(wnd);
 	const ivec2 ihalfsize = settings::rays * shape;
+	const ivec2 fine_size = 2 * settings::refine * ihalfsize;
 	const double rtt1 = glfwGetTime();
 
 	std::vector<vec4> uvws;
 	std::vector<vec4> colors;
+	std::vector<vec4> fine_colors;
 	uvws.resize(4 * ihalfsize.x * ihalfsize.y);
 	colors.resize(4 * ihalfsize.x * ihalfsize.y);
+	fine_colors.resize(fine_size.x * fine_size.y);
 
 	struct Job {
 		int at;
@@ -785,6 +789,69 @@ void render(GLFWwindow *wnd) {
 		}
 	}
 
+	jobs.clear();
+	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
+		int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
+		if (!colors[coarse_index].w)
+			continue;
+		for (ivec2 sub: irange(ivec2(settings::refine))) {
+			const ivec2 fine_ipos = settings::refine * (ihalfsize + ipos) + sub;
+			const int fine_index = fine_size.x * fine_ipos.y + fine_ipos.x;
+			const vec2 off = (vec2(sub) + .5f) / float(settings::refine);
+			const vec2 wpos = (vec2(ipos) + off) / vec2(ihalfsize);
+			const vec2 spos = shape * wpos;
+			TrackPoint pt;
+			pt.pos = me->loc.pos;
+			pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
+			pt.space = me->loc.space;
+			jobs.push_back({fine_index, pt});
+		}
+	}
+
+	for (int n = 0; !jobs.empty(); n++) {
+		if (n >= settings::trace_limit) {
+			fprintf(stderr, "Warning: tracing loop aborted with %zu jobs still pending\n", jobs.size());
+			break;
+		}
+
+		struct Batch {
+			std::vector<int> indices;
+			std::vector<Ray> rays;
+		};
+		std::unordered_map<Subspace const *, Batch> batches;
+
+		for (auto &&job: jobs) {
+			Batch &batch = batches[job.pt.space];
+			batch.indices.push_back(job.at);
+			batch.rays.push_back(job.pt);
+		}
+		jobs.clear();
+
+		for (auto &&[space, batch]: batches) {
+			assert(batch.indices.size() == batch.rays.size());
+			auto results = space->trace(batch.rays);
+			auto flat = dynamic_cast<ThingySubspace const *>(space);
+			assert(results.size() == batch.rays.size());
+			for (int k = 0; k < batch.rays.size(); k++) {
+				const int at = batch.indices[k];
+				auto const &traced = results[k];
+				bool end = false;
+				if (!traced.to.space) {
+					end = true;
+				}
+				if (flat) {
+					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
+						fine_colors[at] = vec4{0.5f + 0.5f * glm::normalize(t.thingspace_incident.pos), 1.0f};
+						end = true;
+					}
+				}
+				if (!end) {
+					jobs.push_back({at, traced.to});
+				}
+			}
+		}
+	}
+
 	double rtt2 = glfwGetTime();
 	rt_rays += uvws.size();
 	rt_time += rtt2 - rtt1;
@@ -816,6 +883,20 @@ void render(GLFWwindow *wnd) {
 	glUseProgram(prog::quad);
 	glDrawArrays(GL_POINTS, 0, 1);
 	glDeleteTextures(1, &rt_colors);
+
+	TextureID rt_fine_colors = 0;
+	glCreateTextures(GL_TEXTURE_2D, 1, &rt_fine_colors);
+	glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(rt_fine_colors,  GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTextureStorage2D(rt_fine_colors, 1, GL_RGBA8, fine_size.x, fine_size.y);
+	glTextureSubImage2D(rt_fine_colors, 0, 0, 0, fine_size.x, fine_size.y, GL_RGBA, GL_FLOAT, fine_colors.data());
+	glBindTextureUnit(0, rt_fine_colors);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	glUseProgram(prog::quad);
+	glDrawArrays(GL_POINTS, 0, 1);
+	glDeleteTextures(1, &rt_fine_colors);
 
 	glUseProgram(0);
 
