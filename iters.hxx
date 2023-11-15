@@ -26,6 +26,8 @@ asyncpp::generator<T> irange(T stop) {
 template <typename C>
 auto enumerate(C &&container) -> asyncpp::generator<std::pair<int, decltype(*std::begin(container))>> {
 	int index = 0;
-	for (auto &&item: container)
-		co_yield {index++, item};
+	for (auto &&item: container) {
+		co_yield {index, item};
+		++index;
+	}
 }
