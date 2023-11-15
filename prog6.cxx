@@ -707,11 +707,6 @@ void load_textures() {
 	glTextureParameteri(tex::objs, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
-struct Job {
-	int at;
-	TrackPoint pt;
-};
-
 class ball_distribution {
 public:
 	ball_distribution(float _radius = 1.0f) : radius(_radius), inner(-1.0f, 1.0f) {}
@@ -733,7 +728,15 @@ private:
 	std::uniform_real_distribution<float> inner;
 };
 
-void trace(ThingTraceResult *result, std::vector<Job> jobs) {
+std::vector<ThingTraceResult> trace(std::vector<TrackPoint> rays) {
+	struct Job {
+		int at;
+		TrackPoint pt;
+	};
+	std::vector<ThingTraceResult> result(rays.size());
+	std::vector<Job> jobs(rays.size());
+	for (int k = 0; k < rays.size(); k++)
+		jobs[k] = {k, rays[k]};
 	for (int n = 0; !jobs.empty(); n++) {
 		if (n >= settings::trace_limit) {
 			fprintf(stderr, "Warning: tracing loop aborted with %zu jobs still pending\n", jobs.size());
@@ -779,6 +782,7 @@ void trace(ThingTraceResult *result, std::vector<Job> jobs) {
 			}
 		}
 	}
+	return result;
 }
 
 void render(GLFWwindow *wnd) {
@@ -809,20 +813,18 @@ void render(GLFWwindow *wnd) {
 	colors.resize(4 * ihalfsize.x * ihalfsize.y);
 	fine_colors.resize(fine_size.x * fine_size.y);
 
-	std::vector<Job> jobs;
+	std::vector<TrackPoint> jobs;
 	jobs.reserve(4 * ihalfsize.x * ihalfsize.y);
 	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
-		int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
 		vec2 spos = shape * wpos;
 		TrackPoint pt;
 		pt.pos = me->loc.pos;
 		pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
 		pt.space = me->loc.space;
-		jobs.push_back({index, pt});
+		jobs.push_back(pt);
 	}
-	std::vector<ThingTraceResult> trace_result(4 * ihalfsize.x * ihalfsize.y);
-	trace(trace_result.data(), std::move(jobs));
+	auto trace_result = trace(std::move(jobs));
 	jobs.clear();
 	for (int k = 0; k < 4 * ihalfsize.x * ihalfsize.y; k++) {
 		if (trace_result[k].thing) {
@@ -833,7 +835,7 @@ void render(GLFWwindow *wnd) {
 		}
 	}
 	trace_result = {};
-/*
+
 	std::vector<char> objects_mask_2;
 	objects_mask_2.resize(objects_mask.size());
 	for (ivec2 ipos: irange(-ihalfsize + 1, ihalfsize - 1)) {
@@ -845,6 +847,8 @@ void render(GLFWwindow *wnd) {
 			+ objects_mask[index + 2 * ihalfsize.x];
 	}
 
+	std::vector<uint32_t> indices;
+	indices.reserve(fine_size.x * fine_size.y);
 	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
 		int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 		int mask = objects_mask_2[coarse_index];
@@ -861,19 +865,19 @@ void render(GLFWwindow *wnd) {
 			pt.pos = me->loc.pos;
 			pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
 			pt.space = me->loc.space;
-			jobs.push_back({fine_index, pt});
+			jobs.push_back(pt);
+			indices.push_back(fine_index);
 		}
 	}
-	trace_result.resize(4 * fine_size.x * fine_size.y);
-	trace(trace_result.data(), std::move(jobs));
+	trace_result = trace(std::move(jobs));
 	jobs.clear();
-	for (int k = 0; k < 4 * fine_size.x * fine_size.y; k++) {
-		if (trace_result[k].thing) {
-			fine_colors[k] = vec4(0.5f + 0.5f * trace_result[k].normal, 1.0f);
+	for (auto [job_index, fine_index]: enumerate(indices)) {
+		if (trace_result[job_index].thing) {
+			fine_colors[fine_index] = vec4(0.5f + 0.5f * trace_result[job_index].normal, 1.0f);
 		}
 	}
 	trace_result = {};
-*/
+
 	double rtt2 = glfwGetTime();
 	rt_rays += uvws.size();
 	rt_time += rtt2 - rtt1;
