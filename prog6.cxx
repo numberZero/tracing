@@ -865,7 +865,7 @@ void render(GLFWwindow *wnd) {
 	};
 
 	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
-	ball_distribution metal{0.0f};
+	ball_distribution metal{0.1f};
 	ball_distribution plastic{1.0f};
 	std::vector<ColorTraceJob> color_jobs;
 	color_jobs.reserve(ihalfsize.x * ihalfsize.y);
@@ -873,7 +873,7 @@ void render(GLFWwindow *wnd) {
 		auto const &t = trace_result[k];
 		if (t.thing) {
 			objects_mask[k] = 1;
-			const int n_samples = 1;
+			const int n_samples = 4;
 			const vec3 color = {.5f, .5f, .5f};
 			for (int s = 0; s < n_samples; s++) {
 #if PLASTIC
@@ -900,7 +900,7 @@ void render(GLFWwindow *wnd) {
 		for (auto [job_index, job]: enumerate(color_jobs)) {
 			auto const &t = trace_result[job_index];
 			if (t.thing) {
-				const int n_samples = 1;
+				const int n_samples = 2;
 				const vec3 color = {.5f, .5f, .5f};
 				for (int s = 0; s < n_samples; s++) {
 #if PLASTIC
