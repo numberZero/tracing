@@ -738,12 +738,12 @@ private:
 	std::uniform_real_distribution<float> inner;
 };
 
-glm::vec4 sample(glm::vec3 dir) {
-	static const mat4 conv = {
-		{.5, -.5, -.5, 0},
-		{-.5, .5, -.5, 0},
-		{-.5, -.5, .5, 0},
-		{.5, .5, .5, 0},
+glm::vec3 sample(glm::vec3 dir) {
+	static const mat4x3 conv = {
+		{.5, -.5, -.5},
+		{-.5, .5, -.5},
+		{-.5, -.5, .5},
+		{.5, .5, .5},
 	};
 	return conv * vec4(dir / max(abs(dir)), 1.0f);
 }
@@ -861,7 +861,7 @@ void render(GLFWwindow *wnd) {
 
 	struct ColorTraceJob {
 		int pixel_index;
-		float weight;
+		vec3 weight;
 	};
 
 	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
@@ -874,6 +874,7 @@ void render(GLFWwindow *wnd) {
 		if (t.thing) {
 			objects_mask[k] = 1;
 			const int n_samples = 1;
+			const vec3 color = {.5f, .5f, .5f};
 			for (int s = 0; s < n_samples; s++) {
 #if PLASTIC
 				vec3 dir = normalize(plastic(gen));
@@ -883,7 +884,7 @@ void render(GLFWwindow *wnd) {
 				vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
 #endif
 				jobs.push_back({{t.incident.pos, dir}, t.space});
-				color_jobs.push_back({k, 1.0f / n_samples});
+				color_jobs.push_back({k, color / float(n_samples)});
 			}
 			colors[k] = {0, 0, 0, 1};
 		} else {
@@ -900,6 +901,7 @@ void render(GLFWwindow *wnd) {
 			auto const &t = trace_result[job_index];
 			if (t.thing) {
 				const int n_samples = 1;
+				const vec3 color = {.5f, .5f, .5f};
 				for (int s = 0; s < n_samples; s++) {
 #if PLASTIC
 					vec3 dir = normalize(plastic(gen));
@@ -909,16 +911,17 @@ void render(GLFWwindow *wnd) {
 					vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
 #endif
 					jobs.push_back({{t.incident.pos, dir}, t.space});
-					color_jobs_2.push_back({job.pixel_index, job.weight / n_samples});
+					color_jobs_2.push_back({job.pixel_index, color * job.weight / float(n_samples)});
 				}
 			} else {
-				vec4 color = sample(t.incident.dir);
-				colors[job.pixel_index] += job.weight * color;
+				vec3 color = sample(t.incident.dir);
+				colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
 			}
 		}
 		std::swap(color_jobs, color_jobs_2);
 	}
 	trace_result = {};
+	jobs.clear();
 
 	std::vector<char> objects_mask_2;
 	objects_mask_2.resize(objects_mask.size());
