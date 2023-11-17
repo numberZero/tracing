@@ -905,8 +905,21 @@ void render(GLFWwindow *wnd) {
 	trace_result = trace(std::move(jobs));
 	jobs.clear();
 	for (auto [job_index, fine_index]: enumerate(indices)) {
-		if (trace_result[job_index].thing) {
-			fine_colors[fine_index] = vec4(0.5f + 0.5f * trace_result[job_index].normal, 1.0f);
+		auto const &t = trace_result[job_index];
+		if (t.thing) {
+			const int n_samples = 4;
+			vec4 color = {};
+			for (int s = 0; s < n_samples; s++) {
+#if PLASTIC
+				vec3 dir = normalize(plastic(gen));
+				if (dot(dir, t.normal) < 0.0f)
+					dir -= 2.0f * t.normal * dot(dir, t.normal);
+#else
+				vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
+#endif
+				color += sample(dir);
+			}
+			fine_colors[fine_index] = color / float(n_samples);
 		}
 	}
 	trace_result = {};
