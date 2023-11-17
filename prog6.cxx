@@ -744,12 +744,19 @@ glm::vec4 sample(glm::vec3 dir) {
 	return conv * vec4(dir / max(abs(dir)), 1.0f);
 }
 
-std::vector<ThingTraceResult> trace(std::vector<TrackPoint> rays) {
+struct VisualTraceResult {
+	Ray incident;
+	vec3 normal;
+	Subspace const *space = nullptr;
+	Thing const *thing = nullptr;
+};
+
+std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 	struct Job {
 		int at;
 		TrackPoint pt;
 	};
-	std::vector<ThingTraceResult> result(rays.size());
+	std::vector<VisualTraceResult> result(rays.size());
 	std::vector<Job> jobs(rays.size());
 	for (int k = 0; k < rays.size(); k++)
 		jobs[k] = {k, rays[k]};
@@ -782,7 +789,12 @@ std::vector<ThingTraceResult> trace(std::vector<TrackPoint> rays) {
 				auto const &traced = results[k];
 				if (flat) {
 					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
-						result[at] = t;
+						result[at] = {
+							.space = space,
+							.thing = t.thing,
+							.incident = t.incident,
+							.normal = t.normal,
+						};
 						continue;
 					}
 				}
@@ -790,9 +802,9 @@ std::vector<ThingTraceResult> trace(std::vector<TrackPoint> rays) {
 					jobs.push_back({at, traced.to});
 				} else {
 					result[at] = {
+						.space = space,
 						.thing = nullptr,
 						.incident = traced.end,
-						.distance = traced.distance,
 					};
 				}
 			}
