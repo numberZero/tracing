@@ -743,7 +743,7 @@ glm::vec4 sample(glm::vec3 dir) {
 		{.5, -.5, -.5, 0},
 		{-.5, .5, -.5, 0},
 		{-.5, -.5, .5, 0},
-		{.5, .5, .5, 1},
+		{.5, .5, .5, 0},
 	};
 	return conv * vec4(dir / max(abs(dir)), 1.0f);
 }
@@ -859,15 +859,21 @@ void render(GLFWwindow *wnd) {
 	auto trace_result = trace(std::move(jobs));
 	jobs.clear();
 
+	struct ColorTraceJob {
+		int pixel_index;
+		float weight;
+	};
+
 	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
-	ball_distribution metal{0.5f};
+	ball_distribution metal{0.0f};
 	ball_distribution plastic{1.0f};
+	std::vector<ColorTraceJob> color_jobs;
+	color_jobs.reserve(ihalfsize.x * ihalfsize.y);
 	for (int k = 0; k < 4 * ihalfsize.x * ihalfsize.y; k++) {
 		auto const &t = trace_result[k];
 		if (t.thing) {
 			objects_mask[k] = 1;
-			const int n_samples = 4;
-			vec4 color = {};
+			const int n_samples = 1;
 			for (int s = 0; s < n_samples; s++) {
 #if PLASTIC
 				vec3 dir = normalize(plastic(gen));
@@ -876,11 +882,25 @@ void render(GLFWwindow *wnd) {
 #else
 				vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
 #endif
-				color += sample(dir);
+				jobs.push_back({{t.incident.pos, dir}, t.space});
+				color_jobs.push_back({k, 1.0f / n_samples});
 			}
-			colors[k] = color / float(n_samples);
+			colors[k] = {0, 0, 0, 1};
 		} else {
 			uvws[k] = vec4(t.incident.dir, 0.0f);
+		}
+	}
+
+	trace_result = trace(std::move(jobs));
+	jobs.clear();
+	for (auto [job_index, job]: enumerate(color_jobs)) {
+		auto const &t = trace_result[job_index];
+		if (t.thing) {
+			// TODO
+			colors[job.pixel_index] += job.weight * vec4(0.5f, 0.5f, 0.5f, 0.0f);
+		} else {
+			vec4 color = sample(t.incident.dir);
+			colors[job.pixel_index] += job.weight * color;
 		}
 	}
 	trace_result = {};
