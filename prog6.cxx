@@ -891,17 +891,32 @@ void render(GLFWwindow *wnd) {
 		}
 	}
 
-	trace_result = trace(std::move(jobs));
-	jobs.clear();
-	for (auto [job_index, job]: enumerate(color_jobs)) {
-		auto const &t = trace_result[job_index];
-		if (t.thing) {
-			// TODO
-			colors[job.pixel_index] += job.weight * vec4(0.5f, 0.5f, 0.5f, 0.0f);
-		} else {
-			vec4 color = sample(t.incident.dir);
-			colors[job.pixel_index] += job.weight * color;
+	for (int depth = 0; depth < 4; depth++) {
+		trace_result = trace(std::move(jobs));
+		jobs.clear();
+		std::vector<ColorTraceJob> color_jobs_2;
+		color_jobs_2.reserve(color_jobs.size());
+		for (auto [job_index, job]: enumerate(color_jobs)) {
+			auto const &t = trace_result[job_index];
+			if (t.thing) {
+				const int n_samples = 1;
+				for (int s = 0; s < n_samples; s++) {
+#if PLASTIC
+					vec3 dir = normalize(plastic(gen));
+					if (dot(dir, t.normal) < 0.0f)
+						dir -= 2.0f * t.normal * dot(dir, t.normal);
+#else
+					vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
+#endif
+					jobs.push_back({{t.incident.pos, dir}, t.space});
+					color_jobs_2.push_back({job.pixel_index, job.weight / n_samples});
+				}
+			} else {
+				vec4 color = sample(t.incident.dir);
+				colors[job.pixel_index] += job.weight * color;
+			}
 		}
+		std::swap(color_jobs, color_jobs_2);
 	}
 	trace_result = {};
 
