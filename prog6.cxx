@@ -734,6 +734,16 @@ private:
 	std::uniform_real_distribution<float> inner;
 };
 
+glm::vec4 sample(glm::vec3 dir) {
+	static const mat4 conv = {
+		{.5, -.5, -.5, 0},
+		{-.5, .5, -.5, 0},
+		{-.5, -.5, .5, 0},
+		{.5, .5, .5, 1},
+	};
+	return conv * vec4(dir / max(abs(dir)), 1.0f);
+}
+
 std::vector<ThingTraceResult> trace(std::vector<TrackPoint> rays) {
 	struct Job {
 		int at;
@@ -832,12 +842,29 @@ void render(GLFWwindow *wnd) {
 	}
 	auto trace_result = trace(std::move(jobs));
 	jobs.clear();
+
+	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
+	ball_distribution metal{0.5f};
+	ball_distribution plastic{1.0f};
 	for (int k = 0; k < 4 * ihalfsize.x * ihalfsize.y; k++) {
-		if (trace_result[k].thing) {
+		auto const &t = trace_result[k];
+		if (t.thing) {
 			objects_mask[k] = 1;
-			colors[k] = vec4(0.5f + 0.5f * trace_result[k].normal, 1.0f);
+			const int n_samples = 4;
+			vec4 color = {};
+			for (int s = 0; s < n_samples; s++) {
+#if PLASTIC
+				vec3 dir = normalize(plastic(gen));
+				if (dot(dir, t.normal) < 0.0f)
+					dir -= 2.0f * t.normal * dot(dir, t.normal);
+#else
+				vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
+#endif
+				color += sample(dir);
+			}
+			colors[k] = color / float(n_samples);
 		} else {
-			uvws[k] = vec4(trace_result[k].incident.dir, 0.0f);
+			uvws[k] = vec4(t.incident.dir, 0.0f);
 		}
 	}
 	trace_result = {};
