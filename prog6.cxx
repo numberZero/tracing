@@ -794,10 +794,10 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 				if (flat) {
 					if (auto t = flat->traceToThing(batch.rays[k]); t.thing) {
 						result[at] = {
-							.space = space,
-							.thing = t.thing,
 							.incident = t.incident,
 							.normal = t.normal,
+							.space = space,
+							.thing = t.thing,
 						};
 						continue;
 					}
@@ -806,9 +806,9 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 					jobs.push_back({at, traced.to});
 				} else {
 					result[at] = {
+						.incident = traced.end,
 						.space = space,
 						.thing = nullptr,
-						.incident = traced.end,
 					};
 				}
 			}

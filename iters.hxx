@@ -8,7 +8,7 @@ generator<T> irange(T start, T stop, T step = T{1});
 template <>
 generator<int> irange<int>(int start, int stop, int step) {
 	for (int x = start; x < stop; x += step)
-		co_yield {x};
+		co_yield x;
 }
 
 template <>
