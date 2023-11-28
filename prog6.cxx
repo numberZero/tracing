@@ -12,6 +12,7 @@
 #include <GLFW/glfw3.h>
 #include <GL/gl.h>
 #include <GL/glext.h>
+#include <omp.h>
 #include "averager.hxx"
 #include "math.hxx"
 #include "texture.hxx"
@@ -783,11 +784,14 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 		}
 		jobs.clear();
 
+		static constexpr int N_THREADS = 4;
+		std::vector<Job> jobs2[N_THREADS];
 		for (auto &&[space, batch]: batches) {
 			assert(batch.indices.size() == batch.rays.size());
 			auto results = space->trace(batch.rays);
 			auto flat = dynamic_cast<ThingySubspace const *>(space);
 			assert(results.size() == batch.rays.size());
+			[[omp::directive( parallel for num_threads(N_THREADS))]]
 			for (int k = 0; k < batch.rays.size(); k++) {
 				const int at = batch.indices[k];
 				auto const &traced = results[k];
@@ -803,7 +807,7 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 					}
 				}
 				if (traced.to.space) {
-					jobs.push_back({at, traced.to});
+					jobs2[omp_get_thread_num()].push_back({at, traced.to});
 				} else {
 					result[at] = {
 						.incident = traced.end,
@@ -811,8 +815,11 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 						.thing = nullptr,
 					};
 				}
-			}
+			};
 		}
+		jobs.reserve(std::accumulate(begin(jobs2), end(jobs2), 0, [] (int a, auto const &v) { return a + v.size(); }));
+		for (auto const &j: jobs2)
+			jobs.insert(jobs.end(), j.begin(), j.end());
 	}
 	return result;
 }
