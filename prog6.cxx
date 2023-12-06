@@ -865,28 +865,32 @@ void render(GLFWwindow *wnd) {
 	};
 
 	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
-	ball_distribution metal{0.1f};
-	ball_distribution plastic{1.0f};
+
+	auto handle_thing_pixel = [] (std::vector<TrackPoint> &trace_jobs, std::vector<ColorTraceJob> &job_infos, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
+		const vec3 color = {.5f, .5f, .5f};
+		for (int s = 0; s < n_samples; s++) {
+#if PLASTIC
+			static ball_distribution plastic{1.0f};
+			vec3 dir = normalize(plastic(gen));
+			if (dot(dir, t.normal) < 0.0f)
+				dir -= 2.0f * t.normal * dot(dir, t.normal);
+#else
+			static ball_distribution metal{0.1f};
+			vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
+#endif
+			trace_jobs.push_back({{t.incident.pos, dir}, t.space});
+			job_infos.push_back({pixel_index, color * (weight / float(n_samples))});
+		}
+	};
+
 	std::vector<ColorTraceJob> color_jobs;
 	color_jobs.reserve(ihalfsize.x * ihalfsize.y);
 	for (int k = 0; k < 4 * ihalfsize.x * ihalfsize.y; k++) {
 		auto const &t = trace_result[k];
 		if (t.thing) {
 			objects_mask[k] = 1;
-			const int n_samples = 4;
-			const vec3 color = {.5f, .5f, .5f};
-			for (int s = 0; s < n_samples; s++) {
-#if PLASTIC
-				vec3 dir = normalize(plastic(gen));
-				if (dot(dir, t.normal) < 0.0f)
-					dir -= 2.0f * t.normal * dot(dir, t.normal);
-#else
-				vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
-#endif
-				jobs.push_back({{t.incident.pos, dir}, t.space});
-				color_jobs.push_back({k, color / float(n_samples)});
-			}
 			colors[k] = {0, 0, 0, 1};
+			handle_thing_pixel(jobs, color_jobs, k, t, vec3(1.0f), 4);
 		} else {
 			uvws[k] = vec4(t.incident.dir, 0.0f);
 		}
@@ -900,19 +904,7 @@ void render(GLFWwindow *wnd) {
 		for (auto [job_index, job]: enumerate(color_jobs)) {
 			auto const &t = trace_result[job_index];
 			if (t.thing) {
-				const int n_samples = 2;
-				const vec3 color = {.5f, .5f, .5f};
-				for (int s = 0; s < n_samples; s++) {
-#if PLASTIC
-					vec3 dir = normalize(plastic(gen));
-					if (dot(dir, t.normal) < 0.0f)
-						dir -= 2.0f * t.normal * dot(dir, t.normal);
-#else
-					vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
-#endif
-					jobs.push_back({{t.incident.pos, dir}, t.space});
-					color_jobs_2.push_back({job.pixel_index, color * job.weight / float(n_samples)});
-				}
+				handle_thing_pixel(jobs, color_jobs_2, job.pixel_index, t, job.weight, 2);
 			} else {
 				vec3 color = sample(t.incident.dir);
 				colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
