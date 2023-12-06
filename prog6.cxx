@@ -906,25 +906,27 @@ void render(GLFWwindow *wnd) {
 	colors.resize(4 * ihalfsize.x * ihalfsize.y);
 	fine_colors.resize(fine_size.x * fine_size.y);
 
-	std::vector<TrackPoint> jobs;
-	jobs.reserve(4 * ihalfsize.x * ihalfsize.y);
-	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
-		vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
-		vec2 spos = shape * wpos;
-		TrackPoint pt;
-		pt.pos = me->loc.pos;
-		pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
-		pt.space = me->loc.space;
-		jobs.push_back(pt);
-	}
-	auto trace_result = trace(std::move(jobs));
-
 	struct ColorTraceJob {
 		int pixel_index;
 		vec3 weight;
 	};
 
 	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
+
+	static auto prepare_fullscreen_tracing = [] (const vec2 shape, const ivec2 ihalfsize) {
+		std::vector<TrackPoint> jobs;
+		jobs.reserve(4 * ihalfsize.x * ihalfsize.y);
+		for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
+			vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
+			vec2 spos = shape * wpos;
+			TrackPoint pt;
+			pt.pos = me->loc.pos;
+			pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
+			pt.space = me->loc.space;
+			jobs.push_back(pt);
+		}
+		return jobs;
+	};
 
 	static auto handle_thing_pixel = [] (std::vector<TrackPoint> &trace_jobs, std::vector<ColorTraceJob> &job_infos, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
 		const vec3 color = {.5f, .5f, .5f};
@@ -962,68 +964,92 @@ void render(GLFWwindow *wnd) {
 		}
 	};
 
+	static auto process_fullscreen_tracing_result = [] (vec4 *colors, vec4 *uvws, char *objects_mask, const std::vector<VisualTraceResult> trace_result) {
+		std::vector<TrackPoint> jobs;
+		std::vector<ColorTraceJob> color_jobs;
+		color_jobs.reserve(trace_result.size() / 4);
+		for (int k = 0; k < trace_result.size(); k++) {
+			auto const &t = trace_result[k];
+			if (t.thing) {
+				objects_mask[k] = 1;
+				colors[k] = {0, 0, 0, 1};
+				handle_thing_pixel(jobs, color_jobs, k, t, vec3(1.0f), 4);
+			} else {
+				// colors[k] = vec4(sample(t.incident.dir), 1.0f);  // maybe use this for hi-res rendering
+				uvws[k] = vec4(t.incident.dir, 0.0f);
+			}
+		}
+		return std::make_pair(std::move(jobs), std::move(color_jobs));
+	};
+
+	static auto process_fine_tracing_result = [] (vec4 *fine_colors, const std::vector<VisualTraceResult> trace_result, const std::vector<uint32_t> indices) {
+		std::vector<TrackPoint> jobs;
+		std::vector<ColorTraceJob> color_jobs;
+		color_jobs.reserve(trace_result.size());
+		for (auto [job_index, fine_index]: enumerate(indices)) {
+			auto const &t = trace_result[job_index];
+			if (t.thing) {
+				fine_colors[fine_index] = {0, 0, 0, 1};
+				handle_thing_pixel(jobs, color_jobs, fine_index, t, vec3(1.0f), 4);
+			} else {
+				fine_colors[fine_index] = vec4(sample(t.incident.dir), 1.0f);
+			}
+		}
+		return std::make_pair(std::move(jobs), std::move(color_jobs));
+	};
+
+	static auto spread_mask = [] (const ivec2 ihalfsize, const char *objects_mask) {
+		std::vector<char> objects_mask_2;
+		objects_mask_2.resize(4 * ihalfsize.x * ihalfsize.y);
+		for (ivec2 ipos: irange(-ihalfsize + 1, ihalfsize - 1)) {
+			int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
+			objects_mask_2[index] = objects_mask[index]
+				+ objects_mask[index - 1]
+				+ objects_mask[index + 1]
+				+ objects_mask[index - 2 * ihalfsize.x]
+				+ objects_mask[index + 2 * ihalfsize.x];
+		}
+		return objects_mask_2;
+	};
+
+	auto prepare_tracing_near_edges = [&] (const ivec2 ihalfsize, const char *objects_mask_2) {
+		const ivec2 fine_size = 2 * settings::refine * ihalfsize;
+		std::vector<TrackPoint> jobs;
+		std::vector<uint32_t> indices;
+		indices.reserve(fine_size.x * fine_size.y);
+		for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
+			int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
+			int mask = objects_mask_2[coarse_index];
+			if (mask == 0 || mask == 5)
+				continue;
+			colors[coarse_index] = {};
+			for (ivec2 sub: irange(ivec2(settings::refine))) {
+				const ivec2 fine_ipos = settings::refine * (ihalfsize + ipos) + sub;
+				const int fine_index = fine_size.x * fine_ipos.y + fine_ipos.x;
+				const vec2 off = (vec2(sub) + .5f) / float(settings::refine);
+				const vec2 wpos = (vec2(ipos) + off) / vec2(ihalfsize);
+				const vec2 spos = shape * wpos;
+				TrackPoint pt;
+				pt.pos = me->loc.pos;
+				pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
+				pt.space = me->loc.space;
+				jobs.push_back(pt);
+				indices.push_back(fine_index);
+			}
+		}
+		return std::make_pair(jobs, indices);
+	};
+
+	auto jobs = prepare_fullscreen_tracing(shape, ihalfsize);
+	auto trace_result = trace(std::move(jobs));
 	std::vector<ColorTraceJob> color_jobs;
-	jobs.clear();
-	color_jobs.reserve(ihalfsize.x * ihalfsize.y);
-	for (int k = 0; k < 4 * ihalfsize.x * ihalfsize.y; k++) {
-		auto const &t = trace_result[k];
-		if (t.thing) {
-			objects_mask[k] = 1;
-			colors[k] = {0, 0, 0, 1};
-			handle_thing_pixel(jobs, color_jobs, k, t, vec3(1.0f), 4);
-		} else {
-			// colors[k] = vec4(sample(t.incident.dir), 1.0f);  // maybe use this for hi-res rendering
-			uvws[k] = vec4(t.incident.dir, 0.0f);
-		}
-	}
+	std::tie(jobs, color_jobs) = process_fullscreen_tracing_result(colors.data(), uvws.data(), objects_mask.data(), std::move(trace_result));
 	handle_interreflections(colors.data(), std::move(jobs), std::move(color_jobs));
-
-	std::vector<char> objects_mask_2;
-	objects_mask_2.resize(objects_mask.size());
-	for (ivec2 ipos: irange(-ihalfsize + 1, ihalfsize - 1)) {
-		int index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
-		objects_mask_2[index] = objects_mask[index]
-			+ objects_mask[index - 1]
-			+ objects_mask[index + 1]
-			+ objects_mask[index - 2 * ihalfsize.x]
-			+ objects_mask[index + 2 * ihalfsize.x];
-	}
-
+	auto objects_mask_2 = spread_mask(ihalfsize, objects_mask.data());
 	std::vector<uint32_t> indices;
-	jobs.clear();
-	indices.reserve(fine_size.x * fine_size.y);
-	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
-		int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
-		int mask = objects_mask_2[coarse_index];
-		if (mask == 0 || mask == 5)
-			continue;
-		colors[coarse_index] = {};
-		for (ivec2 sub: irange(ivec2(settings::refine))) {
-			const ivec2 fine_ipos = settings::refine * (ihalfsize + ipos) + sub;
-			const int fine_index = fine_size.x * fine_ipos.y + fine_ipos.x;
-			const vec2 off = (vec2(sub) + .5f) / float(settings::refine);
-			const vec2 wpos = (vec2(ipos) + off) / vec2(ihalfsize);
-			const vec2 spos = shape * wpos;
-			TrackPoint pt;
-			pt.pos = me->loc.pos;
-			pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
-			pt.space = me->loc.space;
-			jobs.push_back(pt);
-			indices.push_back(fine_index);
-		}
-	}
+	std::tie(jobs, indices) = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
 	trace_result = trace(std::move(jobs));
-	jobs.clear();
-	color_jobs.clear();
-	for (auto [job_index, fine_index]: enumerate(indices)) {
-		auto const &t = trace_result[job_index];
-		if (t.thing) {
-			fine_colors[fine_index] = {0, 0, 0, 1};
-			handle_thing_pixel(jobs, color_jobs, fine_index, t, vec3(1.0f), 4);
-		} else {
-			fine_colors[fine_index] = vec4(sample(t.incident.dir), 1.0f);
-		}
-	}
+	std::tie(jobs, color_jobs) = process_fine_tracing_result(fine_colors.data(), trace_result, std::move(indices));
 	handle_interreflections(fine_colors.data(), std::move(jobs), std::move(color_jobs));
 
 	double rtt2 = glfwGetTime();
