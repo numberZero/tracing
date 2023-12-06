@@ -704,14 +704,71 @@ void load_shaders() {
 	});
 }
 
+class TextureCubemap {
+public:
+	void load(int size, std::string const &basename) {
+		dim = size;
+		content.resize(6 * face_size());
+		for (int k = 0; k < 6; k++) {
+			png::image<png::rgba_pixel, png::solid_pixel_buffer<png::rgba_pixel>> image(basename + std::to_string(k) + ".png");
+			assert(image.get_width() == size && image.get_height() == size);
+			auto &&data = image.get_pixbuf().get_bytes();
+			memcpy(content.data() + k * face_size(), data.data(), face_size());
+		}
+	}
+
+	void to_gl_texture_layer(TextureID texture, int layer) {
+		for (int k = 0; k < 6; k++)
+			glTextureSubImage3D(texture, 0, 0, 0, 6 * layer + k, dim, dim, 1, GL_RGBA, GL_UNSIGNED_BYTE, content.data() + k * face_size());
+	}
+
+	int face_size() const {
+		return 4 * dim * dim;
+	}
+
+	vec3 sample(vec3 dir) const {
+		const vec3 adir = abs(dir);
+		const float *v = glm::value_ptr(adir);
+		const int dir_index = std::max_element(v, v + 3) - v;
+		int face_index = 2 * dir_index;
+		if (dir[dir_index] < 0)
+			++face_index;
+		dir /= v[dir_index];
+		vec2 uv;
+		switch(face_index) {
+		case 0: uv = {-dir.z, -dir.y}; break; // +x
+		case 1: uv = {dir.z, -dir.y}; break; // -x
+		case 2: uv = {dir.x, dir.z}; break; // +y
+		case 3: uv = {dir.x, -dir.z}; break; // -y
+		case 4: uv = {dir.x, -dir.y}; break; // +z
+		case 5: uv = {-dir.x, -dir.y}; break; // -z
+		default: abort();
+		}
+		uv = 0.5f + 0.5f * uv;
+		ivec2 tc = floor(float(dim) * uv);
+		assert(tc.x >= 0 && tc.y >= 0 && tc.x < dim && tc.y < dim);
+		const uint8_t *pixel = content.data() + face_size() * face_index + 4 * dim * tc.y + 4 * tc.x;
+		return vec3(pixel[0], pixel[1], pixel[2]) / 255.0f;
+	}
+
+private:
+	int dim;
+	std::vector<uint8_t> content;
+};
+
+TextureCubemap skybox;
+
 void load_textures() {
 	unsigned size = 2048;
 	glCreateTextures(GL_TEXTURE_CUBE_MAP_ARRAY, 1, &tex::objs);
-	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_SRGB8_ALPHA8, size, size, 6*4);
-	load_cube_texture_layer(tex::objs, 0, "grid");
-	load_cube_texture_layer(tex::objs, 1, "jupiter");
-	load_cube_texture_layer(tex::objs, 2, "saturn");
-	load_cube_texture_layer(tex::objs, 3, "venus");
+	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_RGBA8, size, size, 6*4);
+	// glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_SRGB8_ALPHA8, size, size, 6*4);
+	skybox.load(size, "grid");
+	skybox.to_gl_texture_layer(tex::objs, 0);
+	// load_cube_texture_layer(tex::objs, 0, "grid");
+	// load_cube_texture_layer(tex::objs, 1, "jupiter");
+	// load_cube_texture_layer(tex::objs, 2, "saturn");
+	// load_cube_texture_layer(tex::objs, 3, "venus");
 	glGenerateTextureMipmap(tex::objs);
 	glTextureParameteri(tex::objs, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 	glTextureParameteri(tex::objs, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -739,14 +796,7 @@ private:
 };
 
 glm::vec3 sample(glm::vec3 dir) {
-	dir /= max(abs(dir));
-	static const mat4x3 conv = {
-		{.5, -.5, -.5},
-		{-.5, .5, -.5},
-		{-.5, -.5, .5},
-		{.5, .5, .5},
-	};
-	return conv * vec4(dir, 1.0f);
+	return skybox.sample(dir);
 }
 
 struct VisualTraceResult {
@@ -912,6 +962,7 @@ void render(GLFWwindow *wnd) {
 			colors[k] = {0, 0, 0, 1};
 			handle_thing_pixel(jobs, color_jobs, k, t, vec3(1.0f), 4);
 		} else {
+			// colors[k] = vec4(sample(t.incident.dir), 1.0f);  // maybe use this for hi-res rendering
 			uvws[k] = vec4(t.incident.dir, 0.0f);
 		}
 	}
@@ -960,7 +1011,7 @@ void render(GLFWwindow *wnd) {
 			fine_colors[fine_index] = {0, 0, 0, 1};
 			handle_thing_pixel(jobs, color_jobs, fine_index, t, vec3(1.0f), 4);
 		} else {
-			// fine_colors[fine_index] = vec4(sample(t.incident.dir), 0.0f);  // TODO: enable after fixing sample()
+			fine_colors[fine_index] = vec4(sample(t.incident.dir), 1.0f);
 		}
 	}
 	handle_interreflections(fine_colors.data(), std::move(jobs), std::move(color_jobs));
@@ -1120,7 +1171,7 @@ GLint GetNamedFramebufferAttachmentParameter(GLuint framebuffer, GLenum attachme
 }
 
 void initGL() {
-	glEnable(GL_FRAMEBUFFER_SRGB);
+	// glEnable(GL_FRAMEBUFFER_SRGB);
 	for (auto attach: (GLenum[]){GL_FRONT_LEFT, GL_FRONT_RIGHT, GL_BACK_LEFT, GL_BACK_RIGHT, GL_DEPTH, GL_STENCIL}) {
 		printf("Probing %04x...", attach);
 		GLenum type = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
