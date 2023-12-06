@@ -986,13 +986,6 @@ void render(GLFWwindow *wnd) {
 		return std::make_pair(std::move(jobs), std::move(color_jobs));
 	};
 
-	static auto trace_indexed = [] (vec4 *colors, std::vector<TrackPoint> in_jobs, std::vector<uint32_t> indices) {
-		std::vector<ColorTraceJob> job_infos(indices.size());
-		for (int k = 0; k < indices.size(); k++)
-			job_infos[k] = {(int)indices[k], {1.0f, 1.0f, 1.0f}};
-		return handle_interreflections_1(colors, in_jobs, job_infos);
-	};
-
 	static auto spread_mask = [] (const ivec2 ihalfsize, const char *objects_mask) {
 		std::vector<char> objects_mask_2;
 		objects_mask_2.resize(4 * ihalfsize.x * ihalfsize.y);
@@ -1010,8 +1003,8 @@ void render(GLFWwindow *wnd) {
 	auto prepare_tracing_near_edges = [&] (const ivec2 ihalfsize, const char *objects_mask_2) {
 		const ivec2 fine_size = 2 * settings::refine * ihalfsize;
 		std::vector<TrackPoint> jobs;
-		std::vector<uint32_t> indices;
-		indices.reserve(fine_size.x * fine_size.y);
+		std::vector<ColorTraceJob> job_infos;
+		job_infos.reserve(fine_size.x * fine_size.y);
 		for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
 			int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 			int mask = objects_mask_2[coarse_index];
@@ -1029,11 +1022,11 @@ void render(GLFWwindow *wnd) {
 				pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
 				pt.space = me->loc.space;
 				jobs.push_back(pt);
-				indices.push_back(fine_index);
+				job_infos.push_back({fine_index, {1, 1, 1}});
 				fine_colors[fine_index] = {0, 0, 0, 1};
 			}
 		}
-		return std::make_pair(jobs, indices);
+		return std::make_pair(jobs, job_infos);
 	};
 
 	auto jobs = prepare_fullscreen_tracing(shape, ihalfsize);
@@ -1042,9 +1035,8 @@ void render(GLFWwindow *wnd) {
 	handle_interreflections(colors.data(), std::move(jobs), std::move(color_jobs));
 
 	auto objects_mask_2 = spread_mask(ihalfsize, objects_mask.data());
-	std::vector<uint32_t> indices;
-	std::tie(jobs, indices) = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
-	std::tie(jobs, color_jobs) = trace_indexed(fine_colors.data(), std::move(jobs), std::move(indices));
+	std::tie(jobs, color_jobs) = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
+	std::tie(jobs, color_jobs) = handle_interreflections_1(fine_colors.data(), std::move(jobs), std::move(color_jobs));
 	handle_interreflections(fine_colors.data(), std::move(jobs), std::move(color_jobs));
 
 	double rtt2 = glfwGetTime();
