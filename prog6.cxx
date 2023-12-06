@@ -857,7 +857,6 @@ void render(GLFWwindow *wnd) {
 		jobs.push_back(pt);
 	}
 	auto trace_result = trace(std::move(jobs));
-	jobs.clear();
 
 	struct ColorTraceJob {
 		int pixel_index;
@@ -866,7 +865,7 @@ void render(GLFWwindow *wnd) {
 
 	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
 
-	auto handle_thing_pixel = [] (std::vector<TrackPoint> &trace_jobs, std::vector<ColorTraceJob> &job_infos, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
+	static auto handle_thing_pixel = [] (std::vector<TrackPoint> &trace_jobs, std::vector<ColorTraceJob> &job_infos, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
 		const vec3 color = {.5f, .5f, .5f};
 		for (int s = 0; s < n_samples; s++) {
 #if PLASTIC
@@ -883,7 +882,27 @@ void render(GLFWwindow *wnd) {
 		}
 	};
 
+	static auto handle_interreflections = [] (vec4 *dest_colors, std::vector<TrackPoint> &&trace_jobs, std::vector<ColorTraceJob> &&job_infos) {
+		for (int depth = 0; depth < 4; depth++) {
+			auto trace_result = trace(std::move(trace_jobs));
+			trace_jobs.clear();
+			std::vector<ColorTraceJob> new_job_infos;
+			new_job_infos.reserve(job_infos.size());
+			for (auto [job_index, job]: enumerate(job_infos)) {
+				auto const &t = trace_result[job_index];
+				if (t.thing) {
+					handle_thing_pixel(trace_jobs, new_job_infos, job.pixel_index, t, job.weight, 2);
+				} else {
+					vec3 color = sample(t.incident.dir);
+					dest_colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
+				}
+			}
+			std::swap(job_infos, new_job_infos);
+		}
+	};
+
 	std::vector<ColorTraceJob> color_jobs;
+	jobs.clear();
 	color_jobs.reserve(ihalfsize.x * ihalfsize.y);
 	for (int k = 0; k < 4 * ihalfsize.x * ihalfsize.y; k++) {
 		auto const &t = trace_result[k];
@@ -895,26 +914,7 @@ void render(GLFWwindow *wnd) {
 			uvws[k] = vec4(t.incident.dir, 0.0f);
 		}
 	}
-
-	for (int depth = 0; depth < 4; depth++) {
-		trace_result = trace(std::move(jobs));
-		jobs.clear();
-		std::vector<ColorTraceJob> color_jobs_2;
-		color_jobs_2.reserve(color_jobs.size());
-		for (auto [job_index, job]: enumerate(color_jobs)) {
-			auto const &t = trace_result[job_index];
-			if (t.thing) {
-				handle_thing_pixel(jobs, color_jobs_2, job.pixel_index, t, job.weight, 2);
-			} else {
-				vec3 color = sample(t.incident.dir);
-				colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
-			}
-		}
-		std::swap(color_jobs, color_jobs_2);
-	}
-	trace_result = {};
-	jobs.clear();
-	color_jobs.clear();
+	handle_interreflections(colors.data(), std::move(jobs), std::move(color_jobs));
 
 	std::vector<char> objects_mask_2;
 	objects_mask_2.resize(objects_mask.size());
@@ -928,6 +928,7 @@ void render(GLFWwindow *wnd) {
 	}
 
 	std::vector<uint32_t> indices;
+	jobs.clear();
 	indices.reserve(fine_size.x * fine_size.y);
 	for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
 		int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
@@ -951,6 +952,7 @@ void render(GLFWwindow *wnd) {
 	}
 	trace_result = trace(std::move(jobs));
 	jobs.clear();
+	color_jobs.clear();
 	for (auto [job_index, fine_index]: enumerate(indices)) {
 		auto const &t = trace_result[job_index];
 		if (t.thing) {
@@ -960,24 +962,7 @@ void render(GLFWwindow *wnd) {
 			// fine_colors[fine_index] = vec4(sample(t.incident.dir), 0.0f);  // TODO: enable after fixing sample()
 		}
 	}
-	for (int depth = 0; depth < 4; depth++) {
-		trace_result = trace(std::move(jobs));
-		jobs.clear();
-		std::vector<ColorTraceJob> color_jobs_2;
-		color_jobs_2.reserve(color_jobs.size());
-		for (auto [job_index, job]: enumerate(color_jobs)) {
-			auto const &t = trace_result[job_index];
-			if (t.thing) {
-				handle_thing_pixel(jobs, color_jobs_2, job.pixel_index, t, job.weight, 2);
-			} else {
-				vec3 color = sample(t.incident.dir);
-				fine_colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
-			}
-		}
-		std::swap(color_jobs, color_jobs_2);
-	}
-	trace_result = {};
-	jobs.clear();
+	handle_interreflections(fine_colors.data(), std::move(jobs), std::move(color_jobs));
 
 	double rtt2 = glfwGetTime();
 	rt_rays += uvws.size();
