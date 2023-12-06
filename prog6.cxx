@@ -928,7 +928,12 @@ void render(GLFWwindow *wnd) {
 		return jobs;
 	};
 
-	static auto handle_thing_pixel = [] (std::vector<TrackPoint> &trace_jobs, std::vector<ColorTraceJob> &job_infos, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
+	struct Batch {
+		std::vector<TrackPoint> trace_jobs;
+		std::vector<ColorTraceJob> job_infos;
+	};
+
+	static auto handle_thing_pixel = [] (Batch *batch, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
 		const vec3 color = {.5f, .5f, .5f};
 		for (int s = 0; s < n_samples; s++) {
 #if PLASTIC
@@ -940,50 +945,47 @@ void render(GLFWwindow *wnd) {
 			static ball_distribution metal{0.1f};
 			vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
 #endif
-			trace_jobs.push_back({{t.incident.pos, dir}, t.space});
-			job_infos.push_back({pixel_index, color * (weight / float(n_samples))});
+			batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
+			batch->job_infos.push_back({pixel_index, color * (weight / float(n_samples))});
 		}
 	};
 
-	static auto handle_interreflections_1 = [] (vec4 *dest_colors, std::vector<TrackPoint> in_trace_jobs, std::vector<ColorTraceJob> in_job_infos) {
-		std::vector<TrackPoint> out_trace_jobs;
-		std::vector<ColorTraceJob> out_job_infos;
-		auto trace_result = trace(std::move(in_trace_jobs));
-		out_job_infos.reserve(in_job_infos.size());
-		for (auto [job_index, job]: enumerate(in_job_infos)) {
+	static auto handle_interreflections_1 = [] (vec4 *dest_colors, Batch in) {
+		Batch out;
+		auto trace_result = trace(std::move(in.trace_jobs));
+		out.job_infos.reserve(in.job_infos.size());
+		for (auto [job_index, job]: enumerate(in.job_infos)) {
 			auto const &t = trace_result[job_index];
 			if (t.thing) {
-				handle_thing_pixel(out_trace_jobs, out_job_infos, job.pixel_index, t, job.weight, 2);
+				handle_thing_pixel(&out, job.pixel_index, t, job.weight, 2);
 			} else {
 				vec3 color = sample(t.incident.dir);
 				dest_colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
 			}
 		}
-		return std::make_pair(std::move(out_trace_jobs), std::move(out_job_infos));
+		return out;
 	};
 
-	static auto handle_interreflections = [] (vec4 *dest_colors, std::vector<TrackPoint> &&trace_jobs, std::vector<ColorTraceJob> &&job_infos) {
+	static auto handle_interreflections = [] (vec4 *dest_colors, Batch batch) {
 		for (int depth = 0; depth < 4; depth++)
-			std::tie(trace_jobs, job_infos) = handle_interreflections_1(dest_colors, std::move(trace_jobs), std::move(job_infos));
+			batch = handle_interreflections_1(dest_colors, std::move(batch));
 	};
 
 	static auto trace_flat_multipurpose = [] (vec4 *colors, vec4 *uvws, char *objects_mask, std::vector<TrackPoint> in_jobs) {
 		auto trace_result = trace(std::move(in_jobs));
-		std::vector<TrackPoint> jobs;
-		std::vector<ColorTraceJob> color_jobs;
-		color_jobs.reserve(trace_result.size() / 4);
+		Batch out;
 		for (int k = 0; k < trace_result.size(); k++) {
 			auto const &t = trace_result[k];
 			if (t.thing) {
 				objects_mask[k] = 1;
-				handle_thing_pixel(jobs, color_jobs, k, t, vec3(1.0f), 4);
+				handle_thing_pixel(&out, k, t, vec3(1.0f), 4);
 			} else {
 				// colors[k] = vec4(sample(t.incident.dir), 1.0f);  // maybe use this for hi-res rendering
 				colors[k] = {0, 0, 0, 0};
 				uvws[k] = vec4(t.incident.dir, 0.0f);
 			}
 		}
-		return std::make_pair(std::move(jobs), std::move(color_jobs));
+		return out;
 	};
 
 	static auto spread_mask = [] (const ivec2 ihalfsize, const char *objects_mask) {
@@ -1002,9 +1004,7 @@ void render(GLFWwindow *wnd) {
 
 	auto prepare_tracing_near_edges = [&] (const ivec2 ihalfsize, const char *objects_mask_2) {
 		const ivec2 fine_size = 2 * settings::refine * ihalfsize;
-		std::vector<TrackPoint> jobs;
-		std::vector<ColorTraceJob> job_infos;
-		job_infos.reserve(fine_size.x * fine_size.y);
+		Batch out;
 		for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
 			int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 			int mask = objects_mask_2[coarse_index];
@@ -1021,23 +1021,22 @@ void render(GLFWwindow *wnd) {
 				pt.pos = me->loc.pos;
 				pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
 				pt.space = me->loc.space;
-				jobs.push_back(pt);
-				job_infos.push_back({fine_index, {1, 1, 1}});
+				out.trace_jobs.push_back(pt);
+				out.job_infos.push_back({fine_index, {1, 1, 1}});
 				fine_colors[fine_index] = {0, 0, 0, 1};
 			}
 		}
-		return std::make_pair(jobs, job_infos);
+		return out;
 	};
 
-	auto jobs = prepare_fullscreen_tracing(shape, ihalfsize);
-	std::vector<ColorTraceJob> color_jobs;
-	std::tie(jobs, color_jobs) = trace_flat_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(jobs));
-	handle_interreflections(colors.data(), std::move(jobs), std::move(color_jobs));
+	auto a = prepare_fullscreen_tracing(shape, ihalfsize);
+	auto b = trace_flat_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(a));
+	handle_interreflections(colors.data(), std::move(b));
 
 	auto objects_mask_2 = spread_mask(ihalfsize, objects_mask.data());
-	std::tie(jobs, color_jobs) = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
-	std::tie(jobs, color_jobs) = handle_interreflections_1(fine_colors.data(), std::move(jobs), std::move(color_jobs));
-	handle_interreflections(fine_colors.data(), std::move(jobs), std::move(color_jobs));
+	auto c = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
+	auto d = handle_interreflections_1(fine_colors.data(), std::move(c));
+	handle_interreflections(fine_colors.data(), std::move(d));
 
 	double rtt2 = glfwGetTime();
 	rt_rays += uvws.size();
