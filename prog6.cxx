@@ -706,24 +706,36 @@ void load_shaders() {
 
 class TextureCubemap {
 public:
+	static float linearize(const float channel) {
+		if (channel <= 0.04045f)
+			return channel / 12.92f;
+		return pow((channel + 0.055f) / 1.055f, 2.4f);
+	}
+
 	void load(int size, std::string const &basename) {
 		dim = size;
-		content.resize(6 * face_size());
+		content.resize(6 * dim * dim);
 		for (int k = 0; k < 6; k++) {
 			png::image<png::rgba_pixel, png::solid_pixel_buffer<png::rgba_pixel>> image(basename + std::to_string(k) + ".png");
 			assert(image.get_width() == size && image.get_height() == size);
 			auto &&data = image.get_pixbuf().get_bytes();
-			memcpy(content.data() + k * face_size(), data.data(), face_size());
+			const uint8_t *i_src = data.data();
+			vec4 *i_dest = content.data() + k * dim * dim;
+			for (int pix = 0; pix < dim * dim; pix++, i_src += 4, i_dest++) {
+				const ivec4 p_src(i_src[0], i_src[1], i_src[2], i_src[3]);
+				vec4 &p_dest = *i_dest;
+				vec4 pix_srgb = vec4(p_src) / 255.0f;
+				p_dest[0] = linearize(pix_srgb[0]);
+				p_dest[1] = linearize(pix_srgb[1]);
+				p_dest[2] = linearize(pix_srgb[2]);
+				p_dest[3] = pix_srgb[3];
+			}
 		}
 	}
 
 	void to_gl_texture_layer(TextureID texture, int layer) {
 		for (int k = 0; k < 6; k++)
-			glTextureSubImage3D(texture, 0, 0, 0, 6 * layer + k, dim, dim, 1, GL_RGBA, GL_UNSIGNED_BYTE, content.data() + k * face_size());
-	}
-
-	int face_size() const {
-		return 4 * dim * dim;
+			glTextureSubImage3D(texture, 0, 0, 0, 6 * layer + k, dim, dim, 1, GL_RGBA, GL_FLOAT, content.data() + k * dim * dim);
 	}
 
 	vec3 sample(vec3 dir) const {
@@ -747,13 +759,12 @@ public:
 		uv = 0.5f + 0.5f * uv;
 		ivec2 tc = floor(float(dim) * uv);
 		assert(tc.x >= 0 && tc.y >= 0 && tc.x < dim && tc.y < dim);
-		const uint8_t *pixel = content.data() + face_size() * face_index + 4 * dim * tc.y + 4 * tc.x;
-		return vec3(pixel[0], pixel[1], pixel[2]) / 255.0f;
+		return content[dim * dim * face_index + dim * tc.y + tc.x];
 	}
 
 private:
 	int dim;
-	std::vector<uint8_t> content;
+	std::vector<vec4> content;
 };
 
 TextureCubemap skybox;
@@ -762,7 +773,6 @@ void load_textures() {
 	unsigned size = 2048;
 	glCreateTextures(GL_TEXTURE_CUBE_MAP_ARRAY, 1, &tex::objs);
 	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_RGBA8, size, size, 6*4);
-	// glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_SRGB8_ALPHA8, size, size, 6*4);
 	skybox.load(size, "grid");
 	skybox.to_gl_texture_layer(tex::objs, 0);
 	// load_cube_texture_layer(tex::objs, 0, "grid");
@@ -1171,7 +1181,7 @@ GLint GetNamedFramebufferAttachmentParameter(GLuint framebuffer, GLenum attachme
 }
 
 void initGL() {
-	// glEnable(GL_FRAMEBUFFER_SRGB);
+	glEnable(GL_FRAMEBUFFER_SRGB);
 	for (auto attach: (GLenum[]){GL_FRONT_LEFT, GL_FRONT_RIGHT, GL_BACK_LEFT, GL_BACK_RIGHT, GL_DEPTH, GL_STENCIL}) {
 		printf("Probing %04x...", attach);
 		GLenum type = GetNamedFramebufferAttachmentParameter(0, attach, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
