@@ -903,7 +903,7 @@ void render(GLFWwindow *wnd) {
 	std::vector<vec4> fine_colors;
 	uvws.resize(4 * ihalfsize.x * ihalfsize.y);
 	objects_mask.resize(4 * ihalfsize.x * ihalfsize.y);
-	colors.resize(4 * ihalfsize.x * ihalfsize.y);
+	colors.resize(4 * ihalfsize.x * ihalfsize.y, {0, 0, 0, 1});
 	fine_colors.resize(fine_size.x * fine_size.y);
 
 	struct ColorTraceJob {
@@ -976,10 +976,10 @@ void render(GLFWwindow *wnd) {
 			auto const &t = trace_result[k];
 			if (t.thing) {
 				objects_mask[k] = 1;
-				colors[k] = {0, 0, 0, 1};
 				handle_thing_pixel(jobs, color_jobs, k, t, vec3(1.0f), 4);
 			} else {
 				// colors[k] = vec4(sample(t.incident.dir), 1.0f);  // maybe use this for hi-res rendering
+				colors[k] = {0, 0, 0, 0};
 				uvws[k] = vec4(t.incident.dir, 0.0f);
 			}
 		}
@@ -987,20 +987,10 @@ void render(GLFWwindow *wnd) {
 	};
 
 	static auto trace_indexed = [] (vec4 *colors, std::vector<TrackPoint> in_jobs, std::vector<uint32_t> indices) {
-		auto trace_result = trace(std::move(in_jobs));
-		std::vector<TrackPoint> jobs;
-		std::vector<ColorTraceJob> color_jobs;
-		color_jobs.reserve(trace_result.size());
-		for (auto [job_index, pixel_index]: enumerate(indices)) {
-			auto const &t = trace_result[job_index];
-			if (t.thing) {
-				colors[pixel_index] = {0, 0, 0, 1};
-				handle_thing_pixel(jobs, color_jobs, pixel_index, t, vec3(1.0f), 4);
-			} else {
-				colors[pixel_index] = vec4(sample(t.incident.dir), 1.0f);
-			}
-		}
-		return std::make_pair(std::move(jobs), std::move(color_jobs));
+		std::vector<ColorTraceJob> job_infos(indices.size());
+		for (int k = 0; k < indices.size(); k++)
+			job_infos[k] = {(int)indices[k], {1.0f, 1.0f, 1.0f}};
+		return handle_interreflections_1(colors, in_jobs, job_infos);
 	};
 
 	static auto spread_mask = [] (const ivec2 ihalfsize, const char *objects_mask) {
@@ -1040,6 +1030,7 @@ void render(GLFWwindow *wnd) {
 				pt.space = me->loc.space;
 				jobs.push_back(pt);
 				indices.push_back(fine_index);
+				fine_colors[fine_index] = {0, 0, 0, 1};
 			}
 		}
 		return std::make_pair(jobs, indices);
