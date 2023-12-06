@@ -914,6 +914,7 @@ void render(GLFWwindow *wnd) {
 	}
 	trace_result = {};
 	jobs.clear();
+	color_jobs.clear();
 
 	std::vector<char> objects_mask_2;
 	objects_mask_2.resize(objects_mask.size());
@@ -951,11 +952,32 @@ void render(GLFWwindow *wnd) {
 	trace_result = trace(std::move(jobs));
 	jobs.clear();
 	for (auto [job_index, fine_index]: enumerate(indices)) {
-		if (trace_result[job_index].thing) {
-			fine_colors[fine_index] = vec4(0.5f + 0.5f * trace_result[job_index].normal, 1.0f);
+		auto const &t = trace_result[job_index];
+		if (t.thing) {
+			fine_colors[fine_index] = {0, 0, 0, 1};
+			handle_thing_pixel(jobs, color_jobs, fine_index, t, vec3(1.0f), 4);
+		} else {
+			// fine_colors[fine_index] = vec4(sample(t.incident.dir), 0.0f);  // TODO: enable after fixing sample()
 		}
 	}
+	for (int depth = 0; depth < 4; depth++) {
+		trace_result = trace(std::move(jobs));
+		jobs.clear();
+		std::vector<ColorTraceJob> color_jobs_2;
+		color_jobs_2.reserve(color_jobs.size());
+		for (auto [job_index, job]: enumerate(color_jobs)) {
+			auto const &t = trace_result[job_index];
+			if (t.thing) {
+				handle_thing_pixel(jobs, color_jobs_2, job.pixel_index, t, job.weight, 2);
+			} else {
+				vec3 color = sample(t.incident.dir);
+				fine_colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
+			}
+		}
+		std::swap(color_jobs, color_jobs_2);
+	}
 	trace_result = {};
+	jobs.clear();
 
 	double rtt2 = glfwGetTime();
 	rt_rays += uvws.size();
