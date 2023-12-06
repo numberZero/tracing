@@ -945,23 +945,26 @@ void render(GLFWwindow *wnd) {
 		}
 	};
 
-	static auto handle_interreflections = [] (vec4 *dest_colors, std::vector<TrackPoint> &&trace_jobs, std::vector<ColorTraceJob> &&job_infos) {
-		for (int depth = 0; depth < 4; depth++) {
-			auto trace_result = trace(std::move(trace_jobs));
-			trace_jobs.clear();
-			std::vector<ColorTraceJob> new_job_infos;
-			new_job_infos.reserve(job_infos.size());
-			for (auto [job_index, job]: enumerate(job_infos)) {
-				auto const &t = trace_result[job_index];
-				if (t.thing) {
-					handle_thing_pixel(trace_jobs, new_job_infos, job.pixel_index, t, job.weight, 2);
-				} else {
-					vec3 color = sample(t.incident.dir);
-					dest_colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
-				}
+	static auto handle_interreflections_1 = [] (vec4 *dest_colors, std::vector<TrackPoint> in_trace_jobs, std::vector<ColorTraceJob> in_job_infos) {
+		std::vector<TrackPoint> out_trace_jobs;
+		std::vector<ColorTraceJob> out_job_infos;
+		auto trace_result = trace(std::move(in_trace_jobs));
+		out_job_infos.reserve(in_job_infos.size());
+		for (auto [job_index, job]: enumerate(in_job_infos)) {
+			auto const &t = trace_result[job_index];
+			if (t.thing) {
+				handle_thing_pixel(out_trace_jobs, out_job_infos, job.pixel_index, t, job.weight, 2);
+			} else {
+				vec3 color = sample(t.incident.dir);
+				dest_colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
 			}
-			std::swap(job_infos, new_job_infos);
 		}
+		return std::make_pair(std::move(out_trace_jobs), std::move(out_job_infos));
+	};
+
+	static auto handle_interreflections = [] (vec4 *dest_colors, std::vector<TrackPoint> &&trace_jobs, std::vector<ColorTraceJob> &&job_infos) {
+		for (int depth = 0; depth < 4; depth++)
+			std::tie(trace_jobs, job_infos) = handle_interreflections_1(dest_colors, std::move(trace_jobs), std::move(job_infos));
 	};
 
 	static auto process_fullscreen_tracing_result = [] (vec4 *colors, vec4 *uvws, char *objects_mask, const std::vector<VisualTraceResult> trace_result) {
