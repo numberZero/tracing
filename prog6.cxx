@@ -985,17 +985,17 @@ void render(GLFWwindow *wnd) {
 		return std::make_pair(std::move(jobs), std::move(color_jobs));
 	};
 
-	static auto process_fine_tracing_result = [] (vec4 *fine_colors, const std::vector<VisualTraceResult> trace_result, const std::vector<uint32_t> indices) {
+	static auto process_indexed_tracing_result = [] (vec4 *colors, const std::vector<VisualTraceResult> trace_result, const std::vector<uint32_t> indices) {
 		std::vector<TrackPoint> jobs;
 		std::vector<ColorTraceJob> color_jobs;
 		color_jobs.reserve(trace_result.size());
-		for (auto [job_index, fine_index]: enumerate(indices)) {
+		for (auto [job_index, pixel_index]: enumerate(indices)) {
 			auto const &t = trace_result[job_index];
 			if (t.thing) {
-				fine_colors[fine_index] = {0, 0, 0, 1};
-				handle_thing_pixel(jobs, color_jobs, fine_index, t, vec3(1.0f), 4);
+				colors[pixel_index] = {0, 0, 0, 1};
+				handle_thing_pixel(jobs, color_jobs, pixel_index, t, vec3(1.0f), 4);
 			} else {
-				fine_colors[fine_index] = vec4(sample(t.incident.dir), 1.0f);
+				colors[pixel_index] = vec4(sample(t.incident.dir), 1.0f);
 			}
 		}
 		return std::make_pair(std::move(jobs), std::move(color_jobs));
@@ -1052,7 +1052,7 @@ void render(GLFWwindow *wnd) {
 	std::vector<uint32_t> indices;
 	std::tie(jobs, indices) = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
 	trace_result = trace(std::move(jobs));
-	std::tie(jobs, color_jobs) = process_fine_tracing_result(fine_colors.data(), trace_result, std::move(indices));
+	std::tie(jobs, color_jobs) = process_indexed_tracing_result(fine_colors.data(), trace_result, std::move(indices));
 	handle_interreflections(fine_colors.data(), std::move(jobs), std::move(color_jobs));
 
 	double rtt2 = glfwGetTime();
