@@ -950,25 +950,20 @@ void render(GLFWwindow *wnd) {
 		}
 	};
 
-	static auto handle_interreflections_1 = [] (vec4 *dest_colors, Batch in) {
+	static auto handle_interreflections_1 = [] (vec4 *dest_colors, Batch in, const int n_samples) {
 		Batch out;
 		auto trace_result = trace(std::move(in.trace_jobs));
 		out.job_infos.reserve(in.job_infos.size());
 		for (auto [job_index, job]: enumerate(in.job_infos)) {
 			auto const &t = trace_result[job_index];
 			if (t.thing) {
-				handle_thing_pixel(&out, job.pixel_index, t, job.weight, 2);
+				handle_thing_pixel(&out, job.pixel_index, t, job.weight, n_samples);
 			} else {
 				vec3 color = sample(t.incident.dir);
 				dest_colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
 			}
 		}
 		return out;
-	};
-
-	static auto handle_interreflections = [] (vec4 *dest_colors, Batch batch) {
-		for (int depth = 0; depth < 4; depth++)
-			batch = handle_interreflections_1(dest_colors, std::move(batch));
 	};
 
 	static auto trace_flat_multipurpose = [] (vec4 *colors, vec4 *uvws, char *objects_mask, std::vector<TrackPoint> in_jobs) {
@@ -1029,14 +1024,15 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
-	auto a = prepare_fullscreen_tracing(shape, ihalfsize);
-	auto b = trace_flat_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(a));
-	handle_interreflections(colors.data(), std::move(b));
+	auto coarse_fullscreen_jobs = prepare_fullscreen_tracing(shape, ihalfsize);
+	auto coarse_thingy_jobs = trace_flat_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(coarse_fullscreen_jobs));
+	for (int n_samples: {4, 2, 2, 1, 1})
+		coarse_thingy_jobs = handle_interreflections_1(colors.data(), std::move(coarse_thingy_jobs), n_samples);
 
 	auto objects_mask_2 = spread_mask(ihalfsize, objects_mask.data());
-	auto c = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
-	auto d = handle_interreflections_1(fine_colors.data(), std::move(c));
-	handle_interreflections(fine_colors.data(), std::move(d));
+	auto fine_thingy_jobs = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
+	for (int n_samples: {4, 2, 1})
+		fine_thingy_jobs = handle_interreflections_1(fine_colors.data(), std::move(fine_thingy_jobs), n_samples);
 
 	double rtt2 = glfwGetTime();
 	rt_rays += uvws.size();
