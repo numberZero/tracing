@@ -39,6 +39,7 @@ for k, (bkg, dx, gx, dy, gy, fx, m) in enumerate([
 		]):
 	surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, SIZE, SIZE)
 	ctx = cairo.Context(surface)
+	ctx.set_antialias(cairo.ANTIALIAS_NONE)
 	ctx.set_source_rgba(*bkg, 1.0)
 	ctx.paint()
 	ctx.transform(cairo.Matrix(*m))
@@ -71,6 +72,9 @@ for k, (bkg, dx, gx, dy, gy, fx, m) in enumerate([
 	ctx.line_to(20, 10)
 	ctx.stroke()
 	ctx.select_font_face("DejaVu Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+	fo = cairo.FontOptions()
+	fo.set_antialias(cairo.ANTIALIAS_NONE) # ANTIALIAS_GRAY doesn’t work for whatever reason
+	ctx.set_font_options(fo)
 	ctx.set_font_size(0.3)
 	for u in range(20):
 		x = u/10-1.0
