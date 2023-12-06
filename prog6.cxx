@@ -739,13 +739,14 @@ private:
 };
 
 glm::vec3 sample(glm::vec3 dir) {
+	dir /= max(abs(dir));
 	static const mat4x3 conv = {
 		{.5, -.5, -.5},
 		{-.5, .5, -.5},
 		{-.5, -.5, .5},
 		{.5, .5, .5},
 	};
-	return conv * vec4(dir / max(abs(dir)), 1.0f);
+	return conv * vec4(dir, 1.0f);
 }
 
 struct VisualTraceResult {
