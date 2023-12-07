@@ -85,7 +85,7 @@ public:
 		}
 		uv = 0.5f + 0.5f * uv;
 		ivec2 tc = floor(float(dim) * uv);
-		assert(tc.x >= 0 && tc.y >= 0 && tc.x < dim && tc.y < dim);
+		tc = clamp(tc, 0, dim - 1);
 		return content[dim * dim * face_index + dim * tc.y + tc.x];
 	}
 
