@@ -824,10 +824,11 @@ private:
 TextureCubemap skybox;
 
 void load_textures() {
-	unsigned size = 2048;
+	unsigned size = 1024;
 	glCreateTextures(GL_TEXTURE_CUBE_MAP_ARRAY, 1, &tex::objs);
-	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_RGBA8, size, size, 6*4);
-	skybox.load(size, "grid");
+	// glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_RGBA8, size, size, 6*4); // 8bpc is too little for linear RGB
+	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT, size, size, 6*4);
+	skybox.load(size, "space");
 	skybox.to_gl_texture_layer(tex::objs, 0);
 	// load_cube_texture_layer(tex::objs, 0, "grid");
 	// load_cube_texture_layer(tex::objs, 1, "jupiter");
