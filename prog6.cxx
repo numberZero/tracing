@@ -602,7 +602,7 @@ const float omega = 1.0f;
 const float a = .3f, b = 0.5f * a;
 Sphere spheres[] = {
 	{1, 1000.0f, &uni.outer, {0.0f, -5000.0f, 0.0f}},
-	{1, 300.0f, &uni.outer, {(uni.params.outer_half_length + 320.0f), -100.0f, 0.0f}},
+	{1, 200.0f, &uni.outer, {(uni.params.outer_half_length + 320.0f), -100.0f, 0.0f}},
 	// {0.25f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
 	// {0.10f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f, 0.0f}},
 };
@@ -624,7 +624,7 @@ Mesh meshes[] = {
 		0,
 		{{-1, -1, -1}, {-1, -1, 1}, {-1, 1, -1}, {-1, 1, 1}, {1, -1, -1}, {1, -1, 1}, {1, 1, -1}, {1, 1, 1}},
 		{{0, 1, 2}, {1, 3, 2}, {0, 2, 4}, {2, 6, 4}, {0, 4, 1}, {1, 4, 5}, {5, 6, 7}, {4, 6, 5}, {3, 5, 7}, {1, 5, 3}, {3, 7, 6}, {2, 3, 6}},
-		&uni.outer, {-(uni.params.outer_half_length + off + 4), -1.0f, 0.0f}
+		&uni.outer, {-(uni.params.outer_half_length + off + 4), 3.0f, 0.0f}
 	},
 };
 Thing *me = &meshes[0];
