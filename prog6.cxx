@@ -866,6 +866,27 @@ private:
 	std::uniform_real_distribution<float> inner;
 };
 
+class sphere_distribution {
+public:
+	sphere_distribution(float _radius = 1.0f) : radius(_radius), inner(-1.0f, 1.0f) {}
+
+	template <typename Generator>
+	glm::vec3 operator()(Generator &gen) {
+		for (;;) {
+			glm::vec3 v{inner(gen), inner(gen), inner(gen)};
+			float len = glm::length(v);
+			if (len <= 1.0f && len >= 1e-3) {
+				return (radius / len) * v;
+			}
+		}
+	}
+
+	float radius;
+
+private:
+	std::uniform_real_distribution<float> inner;
+};
+
 glm::vec3 sample(glm::vec3 dir) {
 	return skybox.sample(dir);
 }
