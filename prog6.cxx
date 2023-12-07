@@ -480,6 +480,25 @@ bool active = true;
 double rt_time = 0.0;
 int rt_rays = 0;
 
+class EmptyBoundary final: public SubspaceBoundaryEx {
+public:
+	BoundaryPoint findBoundary(Ray from) const override {
+		return {{nullptr, from.pos, from.pos, mat3(1)}, INFINITY};
+	}
+
+	std::vector<Transition> findOverlaps(vec3 pos, float max_distance) const override {
+		return {};
+	}
+
+	bool contains(vec3 point) const override {
+		return true;
+	}
+
+	Transition leave(Ray at) const override {
+		abort();
+	}
+};
+
 class MyUniverse: public Universe {
 public:
 	Params params;
@@ -489,6 +508,7 @@ public:
 	SideBoundary sbnd{params};
 	InwardsBoundary ibnd{params};
 	ChannelBoundary cbnd{params};
+	EmptyBoundary bnd;
 
 public:
 	MyUniverse() {
@@ -501,6 +521,7 @@ public:
 		sbnd.outer = &outer;
 		sbnd.channel = &channel;
 		outer.boundary = &ibnd;
+		// outer.boundary = &bnd;
 		channel.boundary = &cbnd;
 
 		thingySpaces.push_back(&outer);
