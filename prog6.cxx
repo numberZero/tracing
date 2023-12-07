@@ -12,6 +12,7 @@
 #include <GLFW/glfw3.h>
 #include <GL/gl.h>
 #include <GL/glext.h>
+#include <pcg_random.hpp>
 #include "averager.hxx"
 #include "math.hxx"
 #include "texture.hxx"
@@ -962,7 +963,7 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 
 static const int thread_count = std::thread::hardware_concurrency();
 static std::vector<GLFWwindow *> background_contexts;
-static thread_local std::mt19937 gen{(unsigned long)glfwGetTimerValue()};
+static thread_local pcg32 gen{(unsigned long)glfwGetTimerValue()};
 
 void render(GLFWwindow *wnd) {
 	{

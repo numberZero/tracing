@@ -109,6 +109,10 @@ target_compile_definitions(prog6 PUBLIC
 	DIM=3
 )
 
+target_include_directories(prog6 PRIVATE
+	pcg-cpp/include/
+)
+
 
 add_executable(scatter
 	scatter.cxx
