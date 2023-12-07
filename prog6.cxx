@@ -31,6 +31,71 @@
 
 using namespace std::literals;
 
+class TextureCubemap {
+public:
+	static float linearize(const float channel) {
+		if (channel <= 0.04045f)
+			return channel / 12.92f;
+		return pow((channel + 0.055f) / 1.055f, 2.4f);
+	}
+
+	void load(int size, std::string const &basename) {
+		dim = size;
+		content.resize(6 * dim * dim);
+		for (int k = 0; k < 6; k++) {
+			png::image<png::rgba_pixel, png::solid_pixel_buffer<png::rgba_pixel>> image(basename + std::to_string(k) + ".png");
+			assert(image.get_width() == size && image.get_height() == size);
+			auto &&data = image.get_pixbuf().get_bytes();
+			const uint8_t *i_src = data.data();
+			vec4 *i_dest = content.data() + k * dim * dim;
+			for (int pix = 0; pix < dim * dim; pix++, i_src += 4, i_dest++) {
+				const ivec4 p_src(i_src[0], i_src[1], i_src[2], i_src[3]);
+				vec4 &p_dest = *i_dest;
+				vec4 pix_srgb = vec4(p_src) / 255.0f;
+				p_dest[0] = linearize(pix_srgb[0]);
+				p_dest[1] = linearize(pix_srgb[1]);
+				p_dest[2] = linearize(pix_srgb[2]);
+				p_dest[3] = pix_srgb[3];
+			}
+		}
+	}
+
+	void to_gl_texture_layer(TextureID texture, int layer) {
+		for (int k = 0; k < 6; k++)
+			glTextureSubImage3D(texture, 0, 0, 0, 6 * layer + k, dim, dim, 1, GL_RGBA, GL_FLOAT, content.data() + k * dim * dim);
+	}
+
+	vec3 sample(vec3 dir) const {
+		const vec3 adir = abs(dir);
+		const float *v = glm::value_ptr(adir);
+		const int dir_index = std::max_element(v, v + 3) - v;
+		int face_index = 2 * dir_index;
+		if (dir[dir_index] < 0)
+			++face_index;
+		dir /= v[dir_index];
+		vec2 uv;
+		switch(face_index) {
+		case 0: uv = {-dir.z, -dir.y}; break; // +x
+		case 1: uv = {dir.z, -dir.y}; break; // -x
+		case 2: uv = {dir.x, dir.z}; break; // +y
+		case 3: uv = {dir.x, -dir.z}; break; // -y
+		case 4: uv = {dir.x, -dir.y}; break; // +z
+		case 5: uv = {-dir.x, -dir.y}; break; // -z
+		default: abort();
+		}
+		uv = 0.5f + 0.5f * uv;
+		ivec2 tc = floor(float(dim) * uv);
+		assert(tc.x >= 0 && tc.y >= 0 && tc.x < dim && tc.y < dim);
+		return content[dim * dim * face_index + dim * tc.y + tc.x];
+	}
+
+private:
+	int dim;
+	std::vector<vec4> content;
+};
+
+TextureCubemap skybox;
+
 struct Params {
 	float outer_radius = 5.0f;
 	float inner_radius = 4.0f;
@@ -757,71 +822,6 @@ void load_shaders() {
 		compile_shader(GL_COMPUTE_SHADER, read_file("side.c.glsl")),
 	});
 }
-
-class TextureCubemap {
-public:
-	static float linearize(const float channel) {
-		if (channel <= 0.04045f)
-			return channel / 12.92f;
-		return pow((channel + 0.055f) / 1.055f, 2.4f);
-	}
-
-	void load(int size, std::string const &basename) {
-		dim = size;
-		content.resize(6 * dim * dim);
-		for (int k = 0; k < 6; k++) {
-			png::image<png::rgba_pixel, png::solid_pixel_buffer<png::rgba_pixel>> image(basename + std::to_string(k) + ".png");
-			assert(image.get_width() == size && image.get_height() == size);
-			auto &&data = image.get_pixbuf().get_bytes();
-			const uint8_t *i_src = data.data();
-			vec4 *i_dest = content.data() + k * dim * dim;
-			for (int pix = 0; pix < dim * dim; pix++, i_src += 4, i_dest++) {
-				const ivec4 p_src(i_src[0], i_src[1], i_src[2], i_src[3]);
-				vec4 &p_dest = *i_dest;
-				vec4 pix_srgb = vec4(p_src) / 255.0f;
-				p_dest[0] = linearize(pix_srgb[0]);
-				p_dest[1] = linearize(pix_srgb[1]);
-				p_dest[2] = linearize(pix_srgb[2]);
-				p_dest[3] = pix_srgb[3];
-			}
-		}
-	}
-
-	void to_gl_texture_layer(TextureID texture, int layer) {
-		for (int k = 0; k < 6; k++)
-			glTextureSubImage3D(texture, 0, 0, 0, 6 * layer + k, dim, dim, 1, GL_RGBA, GL_FLOAT, content.data() + k * dim * dim);
-	}
-
-	vec3 sample(vec3 dir) const {
-		const vec3 adir = abs(dir);
-		const float *v = glm::value_ptr(adir);
-		const int dir_index = std::max_element(v, v + 3) - v;
-		int face_index = 2 * dir_index;
-		if (dir[dir_index] < 0)
-			++face_index;
-		dir /= v[dir_index];
-		vec2 uv;
-		switch(face_index) {
-		case 0: uv = {-dir.z, -dir.y}; break; // +x
-		case 1: uv = {dir.z, -dir.y}; break; // -x
-		case 2: uv = {dir.x, dir.z}; break; // +y
-		case 3: uv = {dir.x, -dir.z}; break; // -y
-		case 4: uv = {dir.x, -dir.y}; break; // +z
-		case 5: uv = {-dir.x, -dir.y}; break; // -z
-		default: abort();
-		}
-		uv = 0.5f + 0.5f * uv;
-		ivec2 tc = floor(float(dim) * uv);
-		assert(tc.x >= 0 && tc.y >= 0 && tc.x < dim && tc.y < dim);
-		return content[dim * dim * face_index + dim * tc.y + tc.x];
-	}
-
-private:
-	int dim;
-	std::vector<vec4> content;
-};
-
-TextureCubemap skybox;
 
 void load_textures() {
 	unsigned size = 1024;
