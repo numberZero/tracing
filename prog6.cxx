@@ -95,6 +95,7 @@ private:
 };
 
 TextureCubemap skybox;
+TextureCubemap t_planet;
 
 struct Params {
 	float outer_radius = 5.0f;
@@ -629,27 +630,31 @@ Mesh meshes[] = {
 Thing *me = &meshes[0];
 
 struct Material {
+	TextureCubemap *texture;
 	vec3 color;
 	float roughness;
 	vec3 emission;
 };
 
 Material metal = {
+	.texture = nullptr,
 	.color{0.5f, 0.5f, 0.5f},
 	.roughness = 0.1f,
 	.emission{},
 };
 
 Material sun = {
+	.texture = nullptr,
 	.color{},
 	.roughness{},
 	.emission{10.0f, 10.0f, 10.0f},
 };
 
 Material planet = {
+	.texture = &t_planet,
 	.color{0.5f, 0.5f, 0.8f},
 	.roughness = -1.0f,
-	.emission{},
+	.emission{0.3f, 0.3f, 0.3f},
 };
 
 std::unordered_map<const Thing *, const Material *> materials = {
@@ -830,6 +835,7 @@ void load_textures() {
 	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT, size, size, 6*4);
 	skybox.load(size, "space");
 	skybox.to_gl_texture_layer(tex::objs, 0);
+	t_planet.load(2048, "venus");
 	// load_cube_texture_layer(tex::objs, 0, "grid");
 	// load_cube_texture_layer(tex::objs, 1, "jupiter");
 	// load_cube_texture_layer(tex::objs, 2, "saturn");
@@ -991,9 +997,10 @@ void render(GLFWwindow *wnd) {
 	static auto handle_thing_pixel = [] (Batch *batch, vec4 *colors, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
 		static ball_distribution dist;
 		const auto material = materials.at(t.thing);
-		colors[pixel_index] += vec4(weight * material->emission, 0.0f);
-		if (all(lessThan(abs(weight * material->color), vec3(0.1f))))
-			return;
+		vec3 color = material->texture ? material->texture->sample(t.normal) : vec3(1.0f);
+		vec3 emission = weight * material->emission;
+		if (emission != vec3{})
+			colors[pixel_index] += vec4(color * emission, 0.0f);
 		for (int s = 0; s < n_samples; s++) {
 			vec3 dir;
 			if (material->roughness == -1.0f) {
@@ -1004,7 +1011,7 @@ void render(GLFWwindow *wnd) {
 				dir = normalize(reflect(t.incident.dir, t.normal) + material->roughness * dist(gen));
 			}
 			batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
-			batch->job_infos.push_back({pixel_index, material->color * (weight / float(n_samples))});
+			batch->job_infos.push_back({pixel_index, color * material->color * (weight / float(n_samples))});
 		}
 	};
 
