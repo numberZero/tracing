@@ -960,6 +960,10 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 	return result;
 }
 
+static const int thread_count = std::thread::hardware_concurrency();
+static std::vector<GLFWwindow *> background_contexts;
+static thread_local std::mt19937 gen{(unsigned long)glfwGetTimerValue()};
+
 void render(GLFWwindow *wnd) {
 	{
 		struct {
@@ -993,8 +997,6 @@ void render(GLFWwindow *wnd) {
 		vec3 weight;
 	};
 
-	static thread_local std::mt19937 gen{(unsigned long)time(nullptr)};
-
 	static auto prepare_fullscreen_tracing = [] (const vec2 shape, const ivec2 ihalfsize) {
 		std::vector<TrackPoint> jobs;
 		jobs.reserve(4 * ihalfsize.x * ihalfsize.y);
@@ -1013,6 +1015,25 @@ void render(GLFWwindow *wnd) {
 	struct Batch {
 		std::vector<TrackPoint> trace_jobs;
 		std::vector<ColorTraceJob> job_infos;
+	};
+
+	static auto prepare_fullscreen_tracing_mt = [] (const vec2 shape, const ivec2 ihalfsize, int thread_id) {
+		Batch out;
+		out.trace_jobs.reserve(4 * ihalfsize.x * ihalfsize.y / thread_count);
+		out.job_infos.reserve(4 * ihalfsize.x * ihalfsize.y / thread_count);
+		for (ivec2 ipos: irange(-ihalfsize + ivec2{0, thread_id}, ihalfsize, {1, thread_count})) {
+			const ivec2 zpos = ipos + ihalfsize;
+			const int pixel_index = 2 * ihalfsize.x * zpos.y + zpos.x;
+			vec2 wpos = (vec2(ipos) + .5f) / vec2(ihalfsize);
+			vec2 spos = shape * wpos;
+			TrackPoint pt;
+			pt.pos = me->loc.pos;
+			pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
+			pt.space = me->loc.space;
+			out.trace_jobs.push_back(pt);
+			out.job_infos.push_back({pixel_index, vec3(1.0f)});
+		}
+		return out;
 	};
 
 	static auto handle_thing_pixel = [] (Batch *batch, vec4 *colors, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
@@ -1055,6 +1076,24 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
+	static auto trace_indexed_multipurpose = [] (vec4 *colors, vec4 *uvws, char *objects_mask, Batch in, const int n_samples) {
+		Batch out;
+		auto trace_result = trace(std::move(in.trace_jobs));
+		for (int k = 0; k < trace_result.size(); k++) {
+			const int pixel_index = in.job_infos[k].pixel_index;
+			auto const &t = trace_result[k];
+			if (t.thing) {
+				objects_mask[pixel_index] = 1;
+				handle_thing_pixel(&out, colors, pixel_index, t, vec3(1.0f), n_samples);
+			} else {
+				// colors[pixel_index] = vec4(sample(t.incident.dir), 1.0f);  // maybe use this for hi-res rendering
+				colors[pixel_index] = {0, 0, 0, 0};
+				uvws[pixel_index] = vec4(t.incident.dir, 0.0f);
+			}
+		}
+		return out;
+	};
+
 	static auto trace_flat_multipurpose = [] (vec4 *colors, vec4 *uvws, char *objects_mask, std::vector<TrackPoint> in_jobs, const int n_samples) {
 		auto trace_result = trace(std::move(in_jobs));
 		Batch out;
@@ -1086,10 +1125,10 @@ void render(GLFWwindow *wnd) {
 		return objects_mask_2;
 	};
 
-	auto prepare_tracing_near_edges = [&] (const ivec2 ihalfsize, const char *objects_mask_2) {
+	auto prepare_tracing_near_edges = [&] (const ivec2 ihalfsize, const char *objects_mask_2, int thread_id) {
 		const ivec2 fine_size = 2 * settings::refine * ihalfsize;
 		Batch out;
-		for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
+		for (ivec2 ipos: irange(-ihalfsize + ivec2{0, thread_id}, ihalfsize, {1, thread_count})) {
 			int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 			int mask = objects_mask_2[coarse_index];
 			if (mask == 0 || mask == 5)
@@ -1113,15 +1152,40 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
-	auto coarse_fullscreen_jobs = prepare_fullscreen_tracing(shape, ihalfsize);
-	auto coarse_thingy_jobs = trace_flat_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(coarse_fullscreen_jobs), 8);
-	for (int n_samples: {2, 2, 1, 1})
-		coarse_thingy_jobs = handle_interreflections_1(colors.data(), std::move(coarse_thingy_jobs), n_samples);
+	static auto parallel = [] (auto fn) {
+		std::thread ths[thread_count];
+		for (int th = 0; th < thread_count; th++) {
+			ths[th] = std::thread([&, th] () {
+				glfwMakeContextCurrent(background_contexts[th]);
+				fn(th);
+				glfwMakeContextCurrent(nullptr);
+			});
+		}
+		for (int th = 0; th < thread_count; th++)
+			ths[th].join();
+	};
 
-	auto objects_mask_2 = spread_mask(ihalfsize, objects_mask.data());
-	auto fine_thingy_jobs = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data());
-	for (int n_samples: {4, 2, 1})
-		fine_thingy_jobs = handle_interreflections_1(fine_colors.data(), std::move(fine_thingy_jobs), n_samples);
+	if (settings::refine > 1) {
+		parallel([&] (int th) {
+			auto coarse_fullscreen_jobs = prepare_fullscreen_tracing_mt(shape, ihalfsize, th);
+			auto coarse_thingy_jobs = trace_indexed_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(coarse_fullscreen_jobs), 32);
+			for (int n_samples: {2, 2, 1, 1})
+				coarse_thingy_jobs = handle_interreflections_1(colors.data(), std::move(coarse_thingy_jobs), n_samples);
+		});
+
+		auto objects_mask_2 = spread_mask(ihalfsize, objects_mask.data());
+		parallel([&] (int th) {
+			auto fine_thingy_jobs = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data(), th);
+			for (int n_samples: {4, 2, 1})
+				fine_thingy_jobs = handle_interreflections_1(fine_colors.data(), std::move(fine_thingy_jobs), n_samples);
+		});
+	} else {
+		parallel([&] (int th) {
+			auto jobs = prepare_fullscreen_tracing_mt(shape, ihalfsize, th);
+			for (int n_samples: {16, 2, 2, 1, 1})
+				jobs = handle_interreflections_1(colors.data(), std::move(jobs), n_samples);
+		});
+	}
 
 	double rtt2 = glfwGetTime();
 	rt_rays += uvws.size();
@@ -1404,6 +1468,9 @@ int main() try {
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
 	auto wnd = glfwCreateWindow(1600, 1200, title, nullptr, nullptr);
+	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+	for (int k = 0; k < thread_count; k++)
+		background_contexts.push_back(glfwCreateWindow(1, 1, "OFFSCREEN", nullptr, wnd));
 	glfwMakeContextCurrent(wnd);
 	glDebugMessageCallback(debug, nullptr);
 	initGL();
@@ -1441,6 +1508,9 @@ int main() try {
 			frames = 0;
 		}
 	}
+	for (auto w: background_contexts)
+		glfwDestroyWindow(w);
+	background_contexts.clear();
 	glfwDestroyWindow(wnd);
 #endif
 } catch (char const *str) {
