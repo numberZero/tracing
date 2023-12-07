@@ -535,16 +535,17 @@ const float A = uni.params.inner_half_length + off;
 const float omega = 1.0f;
 const float a = .3f, b = 0.5f * a;
 Sphere spheres[] = {
+	{1, 1000.0f, &uni.outer, {0.0f, -5000.0f, 0.0f}},
+	{1, 300.0f, &uni.outer, {(uni.params.outer_half_length + 320.0f), -100.0f, 0.0f}},
 	// {0.25f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
 	// {0.10f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f, 0.0f}},
-	{1, 300.0f, &uni.outer, {(uni.params.outer_half_length + 320.0f), -100.0f, 0.0f}},
 };
 Mesh meshes[] = {
 	{
 		2,
 		{{-a, -a, 0.f}, {0.f, -0.500f * a, 0.f}, {a, -a, 0.f}, {0.f, 1.414f * a, 0.f}, {0.f, -a, -0.500f * a}, {0.f, -a, 0.500f * a}},
 		{{0, 5, 3}, {5, 2, 3}, {2, 4, 3}, {4, 0, 3}, {5, 0, 1}, {2, 5, 1}, {4, 2, 1}, {0, 4, 1}},
-		&uni.outer, {-(uni.params.outer_half_length + off), -2.0f, 0.0f},
+		&uni.outer, {-(uni.params.outer_half_length + off + 5), -2.5f, 0.0f},
 	},
 	{
 		2,
@@ -557,10 +558,42 @@ Mesh meshes[] = {
 		0,
 		{{-1, -1, -1}, {-1, -1, 1}, {-1, 1, -1}, {-1, 1, 1}, {1, -1, -1}, {1, -1, 1}, {1, 1, -1}, {1, 1, 1}},
 		{{0, 1, 2}, {1, 3, 2}, {0, 2, 4}, {2, 6, 4}, {0, 4, 1}, {1, 4, 5}, {5, 6, 7}, {4, 6, 5}, {3, 5, 7}, {1, 5, 3}, {3, 7, 6}, {2, 3, 6}},
-		&uni.outer, {-(uni.params.outer_half_length + off + 3), -1.0f, 0.0f}
+		&uni.outer, {-(uni.params.outer_half_length + off + 4), -1.0f, 0.0f}
 	},
 };
 Thing *me = &meshes[0];
+
+struct Material {
+	vec3 color;
+	float roughness;
+	vec3 emission;
+};
+
+Material metal = {
+	.color{0.5f, 0.5f, 0.5f},
+	.roughness = 0.1f,
+	.emission{},
+};
+
+Material sun = {
+	.color{},
+	.roughness{},
+	.emission{10.0f, 10.0f, 10.0f},
+};
+
+Material planet = {
+	.color{0.5f, 0.5f, 0.8f},
+	.roughness = -1.0f,
+	.emission{},
+};
+
+std::unordered_map<const Thing *, const Material *> materials = {
+	{&spheres[0], &sun},
+	{&spheres[1], &planet},
+	{&meshes[0], &metal},
+	{&meshes[1], &metal},
+	{&meshes[2], &metal},
+};
 
 void init() {
 	for (auto &sphere: spheres)
@@ -954,20 +987,23 @@ void render(GLFWwindow *wnd) {
 		std::vector<ColorTraceJob> job_infos;
 	};
 
-	static auto handle_thing_pixel = [] (Batch *batch, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
-		const vec3 color = {.5f, .5f, .5f};
+	static auto handle_thing_pixel = [] (Batch *batch, vec4 *colors, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
+		static ball_distribution dist;
+		const auto material = materials.at(t.thing);
+		colors[pixel_index] += vec4(weight * material->emission, 0.0f);
+		if (all(lessThan(abs(weight * material->color), vec3(0.1f))))
+			return;
 		for (int s = 0; s < n_samples; s++) {
-#if PLASTIC
-			static ball_distribution plastic{1.0f};
-			vec3 dir = normalize(plastic(gen));
-			if (dot(dir, t.normal) < 0.0f)
-				dir -= 2.0f * t.normal * dot(dir, t.normal);
-#else
-			static ball_distribution metal{0.1f};
-			vec3 dir = normalize(reflect(t.incident.dir, t.normal) + metal(gen));
-#endif
+			vec3 dir;
+			if (material->roughness == -1.0f) {
+				dir = normalize(dist(gen));
+				if (dot(dir, t.normal) < 0.0f)
+					dir -= 2.0f * t.normal * dot(dir, t.normal);
+			} else {
+				dir = normalize(reflect(t.incident.dir, t.normal) + material->roughness * dist(gen));
+			}
 			batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
-			batch->job_infos.push_back({pixel_index, color * (weight / float(n_samples))});
+			batch->job_infos.push_back({pixel_index, material->color * (weight / float(n_samples))});
 		}
 	};
 
@@ -978,7 +1014,7 @@ void render(GLFWwindow *wnd) {
 		for (auto [job_index, job]: enumerate(in.job_infos)) {
 			auto const &t = trace_result[job_index];
 			if (t.thing) {
-				handle_thing_pixel(&out, job.pixel_index, t, job.weight, n_samples);
+				handle_thing_pixel(&out, dest_colors, job.pixel_index, t, job.weight, n_samples);
 			} else {
 				vec3 color = sample(t.incident.dir);
 				dest_colors[job.pixel_index] += vec4(job.weight * color, 0.0f);
@@ -987,14 +1023,14 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
-	static auto trace_flat_multipurpose = [] (vec4 *colors, vec4 *uvws, char *objects_mask, std::vector<TrackPoint> in_jobs) {
+	static auto trace_flat_multipurpose = [] (vec4 *colors, vec4 *uvws, char *objects_mask, std::vector<TrackPoint> in_jobs, const int n_samples) {
 		auto trace_result = trace(std::move(in_jobs));
 		Batch out;
 		for (int k = 0; k < trace_result.size(); k++) {
 			auto const &t = trace_result[k];
 			if (t.thing) {
 				objects_mask[k] = 1;
-				handle_thing_pixel(&out, k, t, vec3(1.0f), 4);
+				handle_thing_pixel(&out, colors, k, t, vec3(1.0f), n_samples);
 			} else {
 				// colors[k] = vec4(sample(t.incident.dir), 1.0f);  // maybe use this for hi-res rendering
 				colors[k] = {0, 0, 0, 0};
@@ -1046,8 +1082,8 @@ void render(GLFWwindow *wnd) {
 	};
 
 	auto coarse_fullscreen_jobs = prepare_fullscreen_tracing(shape, ihalfsize);
-	auto coarse_thingy_jobs = trace_flat_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(coarse_fullscreen_jobs));
-	for (int n_samples: {4, 2, 2, 1, 1})
+	auto coarse_thingy_jobs = trace_flat_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(coarse_fullscreen_jobs), 8);
+	for (int n_samples: {2, 2, 1, 1})
 		coarse_thingy_jobs = handle_interreflections_1(colors.data(), std::move(coarse_thingy_jobs), n_samples);
 
 	auto objects_mask_2 = spread_mask(ihalfsize, objects_mask.data());
