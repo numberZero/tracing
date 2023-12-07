@@ -1016,20 +1016,23 @@ void render(GLFWwindow *wnd) {
 	};
 
 	static auto handle_thing_pixel = [] (Batch *batch, vec4 *colors, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
-		static ball_distribution dist;
+		static ball_distribution metal;
+		static sphere_distribution plastic;
 		const auto material = materials.at(t.thing);
 		vec3 color = material->texture ? material->texture->sample(t.normal) : vec3(1.0f);
 		vec3 emission = weight * material->emission;
 		if (emission != vec3{})
 			colors[pixel_index] += vec4(color * emission, 0.0f);
+		if (material->color == vec3{})
+			return;
 		for (int s = 0; s < n_samples; s++) {
 			vec3 dir;
 			if (material->roughness == -1.0f) {
-				dir = normalize(dist(gen));
+				dir = plastic(gen);
 				if (dot(dir, t.normal) < 0.0f)
 					dir -= 2.0f * t.normal * dot(dir, t.normal);
 			} else {
-				dir = normalize(reflect(t.incident.dir, t.normal) + material->roughness * dist(gen));
+				dir = normalize(reflect(t.incident.dir, t.normal) + material->roughness * metal(gen));
 			}
 			batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
 			batch->job_infos.push_back({pixel_index, color * material->color * (weight / float(n_samples))});
