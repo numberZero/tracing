@@ -96,7 +96,8 @@ private:
 };
 
 TextureCubemap skybox;
-TextureCubemap t_planet;
+TextureCubemap t_planet_1;
+TextureCubemap t_planet_2;
 
 struct Params {
 	float outer_radius = 5.0f;
@@ -603,6 +604,7 @@ const float omega = 1.0f;
 const float a = .3f, b = 0.5f * a;
 Sphere spheres[] = {
 	{1, 1000.0f, &uni.outer, {0.0f, -5000.0f, 0.0f}},
+	{1, 350.0f, &uni.outer, {(-uni.params.outer_half_length - 420.0f), 120.0f, 0.0f}},
 	{1, 200.0f, &uni.outer, {(uni.params.outer_half_length + 320.0f), -100.0f, 0.0f}},
 	// {0.25f, &uni.outer, {-(uni.params.outer_half_length + off), -0.5f, 0.0f}},
 	// {0.10f, &uni.outer, {-(uni.params.outer_half_length + off), 0.0f, 0.0f}},
@@ -651,16 +653,24 @@ Material sun = {
 	.emission{10.0f, 10.0f, 10.0f},
 };
 
-Material planet = {
-	.texture = &t_planet,
-	.color{0.5f, 0.5f, 0.8f},
+Material planet_1 = {
+	.texture = &t_planet_1,
+	.color{1.0f, 1.0f, 1.0f},
 	.roughness = -1.0f,
 	.emission{0.04f, 0.03f, 0.02f},
 };
 
+Material planet_2 = {
+	.texture = &t_planet_2,
+	.color{1.0f, 1.0f, 1.0f},
+	.roughness = -1.0f,
+	.emission{0.04f, 0.04f, 0.03f},
+};
+
 std::unordered_map<const Thing *, const Material *> materials = {
 	{&spheres[0], &sun},
-	{&spheres[1], &planet},
+	{&spheres[1], &planet_1},
+	{&spheres[2], &planet_2},
 	{&meshes[0], &metal},
 	{&meshes[1], &metal},
 	{&meshes[2], &metal},
@@ -836,7 +846,8 @@ void load_textures() {
 	glTextureStorage3D(tex::objs, int(std::log2(size) + 1.5), GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT, size, size, 6*4);
 	skybox.load(size, "space");
 	skybox.to_gl_texture_layer(tex::objs, 0);
-	t_planet.load(2048, "venus");
+	t_planet_1.load(2048, "jupiter");
+	t_planet_2.load(2048, "venus");
 	// load_cube_texture_layer(tex::objs, 0, "grid");
 	// load_cube_texture_layer(tex::objs, 1, "jupiter");
 	// load_cube_texture_layer(tex::objs, 2, "saturn");
