@@ -1038,7 +1038,7 @@ void render(GLFWwindow *wnd) {
 
 	static auto handle_thing_pixel = [] (Batch *batch, vec4 *colors, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
 		static ball_distribution metal;
-		static sphere_distribution plastic;
+		static sphere_distribution spherical;
 		const auto material = materials.at(t.thing);
 		vec3 color = material->texture ? material->texture->sample(t.normal) : vec3(1.0f);
 		vec3 emission = weight * material->emission;
@@ -1049,7 +1049,26 @@ void render(GLFWwindow *wnd) {
 		for (int s = 0; s < n_samples; s++) {
 			vec3 dir;
 			if (material->roughness == -1.0f) {
-				dir = plastic(gen);
+				if (const auto light_loc = spheres[0].loc; light_loc.space == t.space) {
+					// bias towards the light
+					constexpr float h = 0.1f;
+					const float threshold = -std::sqrt(1.0f - sqr(1.0f - h));
+					static std::uniform_real_distribution<float> along{1.0f - h, 1.0f};
+					if (const vec3 light_dir = normalize(light_loc.pos - t.incident.pos); dot(light_dir, t.normal) >= threshold) {
+						const float x = along(gen);
+						const float r = std::sqrt(1 - x * x);
+						const vec3 v = spherical(gen);
+						dir = x * light_dir + r * normalize(v - light_dir * dot(v, light_dir));
+						if (dot(dir, t.normal) > 0.0f) {
+							// The weight is the ratio of the original probability density to the
+							// biased one. It is simply h for this specific pair.
+							batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
+							batch->job_infos.push_back({pixel_index, h * color * material->color * (weight / float(n_samples))});
+							continue;
+						}
+					}
+				}
+				dir = spherical(gen);
 				if (dot(dir, t.normal) < 0.0f)
 					dir -= 2.0f * t.normal * dot(dir, t.normal);
 			} else {
