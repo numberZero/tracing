@@ -654,7 +654,7 @@ Material planet = {
 	.texture = &t_planet,
 	.color{0.5f, 0.5f, 0.8f},
 	.roughness = -1.0f,
-	.emission{0.3f, 0.3f, 0.3f},
+	.emission{0.04f, 0.03f, 0.02f},
 };
 
 std::unordered_map<const Thing *, const Material *> materials = {
@@ -675,8 +675,8 @@ void init() {
 }
 
 namespace settings {
-	float rays = 120;
-	int refine = 4;
+	float rays = 240;
+	int refine = 1;
 	int trace_limit = 10;
 	bool show_frame = false;
 	bool show_previews = false;
@@ -854,7 +854,7 @@ public:
 		for (;;) {
 			glm::vec3 v{inner(gen), inner(gen), inner(gen)};
 			float len = glm::length(v);
-			if (len <= 1.0f && len >= 1e-3) {
+			if (len <= 1.0f) {
 				return radius * v;
 			}
 		}
@@ -1154,13 +1154,12 @@ void render(GLFWwindow *wnd) {
 
 	static auto parallel = [] (auto fn) {
 		std::thread ths[thread_count];
-		for (int th = 0; th < thread_count; th++) {
+		for (int th = 0; th < thread_count; th++)
 			ths[th] = std::thread([&, th] () {
 				glfwMakeContextCurrent(background_contexts[th]);
 				fn(th);
 				glfwMakeContextCurrent(nullptr);
 			});
-		}
 		for (int th = 0; th < thread_count; th++)
 			ths[th].join();
 	};
@@ -1191,19 +1190,21 @@ void render(GLFWwindow *wnd) {
 	rt_rays += uvws.size();
 	rt_time += rtt2 - rtt1;
 
-	TextureID rt_result = 0;
-	glCreateTextures(GL_TEXTURE_2D, 1, &rt_result);
-	glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTextureParameteri(rt_result,  GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
-	glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, uvws.data());
-	glUseProgram(prog::uv_quad);
-	glBindTextureUnit(0, tex::objs);
-	glBindTextureUnit(1, rt_result);
-	glDisable(GL_BLEND);
-	glDrawArrays(GL_POINTS, 0, 1);
-	glDeleteTextures(1, &rt_result);
+	if (settings::refine > 1) {
+		TextureID rt_result = 0;
+		glCreateTextures(GL_TEXTURE_2D, 1, &rt_result);
+		glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(rt_result,  GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
+		glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, uvws.data());
+		glUseProgram(prog::uv_quad);
+		glBindTextureUnit(0, tex::objs);
+		glBindTextureUnit(1, rt_result);
+		glDisable(GL_BLEND);
+		glDrawArrays(GL_POINTS, 0, 1);
+		glDeleteTextures(1, &rt_result);
+	}
 
 	TextureID rt_colors = 0;
 	glCreateTextures(GL_TEXTURE_2D, 1, &rt_colors);
@@ -1219,19 +1220,21 @@ void render(GLFWwindow *wnd) {
 	glDrawArrays(GL_POINTS, 0, 1);
 	glDeleteTextures(1, &rt_colors);
 
-	TextureID rt_fine_colors = 0;
-	glCreateTextures(GL_TEXTURE_2D, 1, &rt_fine_colors);
-	glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTextureParameteri(rt_fine_colors,  GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTextureStorage2D(rt_fine_colors, 1, GL_RGBA8, fine_size.x, fine_size.y);
-	glTextureSubImage2D(rt_fine_colors, 0, 0, 0, fine_size.x, fine_size.y, GL_RGBA, GL_FLOAT, fine_colors.data());
-	glBindTextureUnit(0, rt_fine_colors);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-	glUseProgram(prog::quad);
-	glDrawArrays(GL_POINTS, 0, 1);
-	glDeleteTextures(1, &rt_fine_colors);
+	if (settings::refine > 1) {
+		TextureID rt_fine_colors = 0;
+		glCreateTextures(GL_TEXTURE_2D, 1, &rt_fine_colors);
+		glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(rt_fine_colors,  GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTextureStorage2D(rt_fine_colors, 1, GL_RGBA8, fine_size.x, fine_size.y);
+		glTextureSubImage2D(rt_fine_colors, 0, 0, 0, fine_size.x, fine_size.y, GL_RGBA, GL_FLOAT, fine_colors.data());
+		glBindTextureUnit(0, rt_fine_colors);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glUseProgram(prog::quad);
+		glDrawArrays(GL_POINTS, 0, 1);
+		glDeleteTextures(1, &rt_fine_colors);
+	}
 
 	glUseProgram(0);
 
