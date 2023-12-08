@@ -999,6 +999,12 @@ protected:
 	struct Batch {
 		std::vector<TrackPoint> trace_jobs;
 		std::vector<ColorTraceJob> job_infos;
+
+		Batch() = default;
+		Batch(int expected_size) {
+			trace_jobs.reserve(expected_size);
+			job_infos.reserve(expected_size);
+		}
 	};
 
 	std::vector<TrackPoint> prepare_fullscreen_tracing(const vec2 shape, const ivec2 ihalfsize) {
@@ -1017,9 +1023,7 @@ protected:
 	};
 
 	Batch prepare_fullscreen_tracing_mt(const vec2 shape, const ivec2 ihalfsize, int thread_id) {
-		Batch out;
-		out.trace_jobs.reserve(4 * ihalfsize.x * ihalfsize.y / thread_count);
-		out.job_infos.reserve(4 * ihalfsize.x * ihalfsize.y / thread_count);
+		Batch out(4 * ihalfsize.x * ihalfsize.y / thread_count);
 		for (ivec2 ipos: irange(-ihalfsize + ivec2{0, thread_id}, ihalfsize, {1, thread_count})) {
 			const ivec2 zpos = ipos + ihalfsize;
 			const int pixel_index = 2 * ihalfsize.x * zpos.y + zpos.x;
@@ -1077,9 +1081,8 @@ protected:
 	};
 
 	Batch handle_interreflections_1(vec4 *dest_colors, Batch in, const int n_samples) {
-		Batch out;
+		Batch out(n_samples * in.job_infos.size());
 		auto trace_result = trace(std::move(in.trace_jobs));
-		out.job_infos.reserve(in.job_infos.size());
 		for (auto [job_index, job]: enumerate(in.job_infos)) {
 			auto const &t = trace_result[job_index];
 			if (t.thing) {
@@ -1164,7 +1167,7 @@ public:
 
 protected:
 	Batch trace_indexed_multipurpose(vec4 *colors, vec4 *uvws, char *objects_mask, Batch in, const int n_samples) {
-		Batch out;
+		Batch out(n_samples * in.trace_jobs.size());
 		auto trace_result = trace(std::move(in.trace_jobs));
 		for (int k = 0; k < trace_result.size(); k++) {
 			const int pixel_index = in.job_infos[k].pixel_index;
@@ -1183,7 +1186,7 @@ protected:
 
 	Batch trace_flat_multipurpose(vec4 *colors, vec4 *uvws, char *objects_mask, std::vector<TrackPoint> in_jobs, const int n_samples) {
 		auto trace_result = trace(std::move(in_jobs));
-		Batch out;
+		Batch out(n_samples * in_jobs.size());
 		for (int k = 0; k < trace_result.size(); k++) {
 			auto const &t = trace_result[k];
 			if (t.thing) {
@@ -1214,7 +1217,7 @@ protected:
 
 	Batch prepare_tracing_near_edges(const ivec2 ihalfsize, const char *objects_mask_2, int thread_id) {
 		const ivec2 fine_size = 2 * settings::refine * ihalfsize;
-		Batch out;
+		Batch out(fine_size.x * fine_size.y);
 		for (ivec2 ipos: irange(-ihalfsize + ivec2{0, thread_id}, ihalfsize, {1, thread_count})) {
 			int coarse_index = (ipos.y + ihalfsize.y) * 2 * ihalfsize.x + (ipos.x + ihalfsize.x);
 			int mask = objects_mask_2[coarse_index];
