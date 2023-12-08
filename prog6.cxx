@@ -972,44 +972,76 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 	return result;
 }
 
+static void show_texture(const void *data, ivec2 size, GLenum filter, auto prepare) {
+	TextureID texture = 0;
+	glCreateTextures(GL_TEXTURE_2D, 1, &texture);
+	glTextureParameteri(texture,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(texture,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(texture,  GL_TEXTURE_MAG_FILTER, filter);
+	glTextureStorage2D(texture, 1, GL_RGBA16F, size.x, size.y);
+	glTextureSubImage2D(texture, 0, 0, 0, size.x, size.y, GL_RGBA, GL_FLOAT, data);
+	prepare(texture);
+	glDrawArrays(GL_POINTS, 0, 1);
+	glDeleteTextures(1, &texture);
+}
+
 static const int thread_count = std::thread::hardware_concurrency();
 static std::vector<GLFWwindow *> background_contexts;
+
+static void parallel(auto fn) {
+	std::thread ths[thread_count];
+	for (int th = 0; th < thread_count; th++)
+		ths[th] = std::thread([&, th] () {
+			glfwMakeContextCurrent(background_contexts[th]);
+			fn(th);
+			glfwMakeContextCurrent(nullptr);
+		});
+	for (int th = 0; th < thread_count; th++)
+		ths[th].join();
+};
+
 static thread_local pcg32 gen{(unsigned long)glfwGetTimerValue()};
 
-void render(GLFWwindow *wnd) {
+struct RenderParams {
+	vec2 shape;
+	ivec2 ihalfsize;
+	ivec2 ifinesize;
+
+	ivec2 isize() const noexcept { return 2 * ihalfsize; }
+	int pixels() const noexcept { return 4 * ihalfsize.x * ihalfsize.y; }
+	int finepixels() const noexcept { return ifinesize.x * ifinesize.y; }
+
+	RenderParams(vec2 in_shape) {
+		shape = in_shape;
+		ihalfsize = settings::rays * shape;
+		ifinesize = 2 * settings::refine * ihalfsize;
+	}
+};
+
+class Renderer {
+public:
+	Renderer(vec2 shape) :
+		p(shape)
 	{
-		struct {
-			Params params;
-			Coefs cs;
-		} data{
-			uni.params,
-			uni.params,
-		};
-		uni.side.prog = comp::side;
-		uni.side.params.resize(sizeof(data));
-		std::memcpy(uni.side.params.data(), &data, sizeof(data));
+		colors.resize(p.pixels(), {0, 0, 0, 1});
 	}
 
-	const vec2 shape = getWinShape(wnd);
-	const ivec2 ihalfsize = settings::rays * shape;
-	const ivec2 fine_size = 2 * settings::refine * ihalfsize;
-	const double rtt1 = glfwGetTime();
+	virtual ~Renderer() = default;
 
-	std::vector<vec4> uvws;
-	std::vector<char> objects_mask;
-	std::vector<vec4> colors;
-	std::vector<vec4> fine_colors;
-	uvws.resize(4 * ihalfsize.x * ihalfsize.y);
-	objects_mask.resize(4 * ihalfsize.x * ihalfsize.y);
-	colors.resize(4 * ihalfsize.x * ihalfsize.y, {0, 0, 0, 1});
-	fine_colors.resize(fine_size.x * fine_size.y);
+	virtual void render() = 0;
 
+protected:
 	struct ColorTraceJob {
 		int pixel_index;
 		vec3 weight;
 	};
 
-	static auto prepare_fullscreen_tracing = [] (const vec2 shape, const ivec2 ihalfsize) {
+	struct Batch {
+		std::vector<TrackPoint> trace_jobs;
+		std::vector<ColorTraceJob> job_infos;
+	};
+
+	std::vector<TrackPoint> prepare_fullscreen_tracing(const vec2 shape, const ivec2 ihalfsize) {
 		std::vector<TrackPoint> jobs;
 		jobs.reserve(4 * ihalfsize.x * ihalfsize.y);
 		for (ivec2 ipos: irange(-ihalfsize, ihalfsize)) {
@@ -1024,12 +1056,7 @@ void render(GLFWwindow *wnd) {
 		return jobs;
 	};
 
-	struct Batch {
-		std::vector<TrackPoint> trace_jobs;
-		std::vector<ColorTraceJob> job_infos;
-	};
-
-	static auto prepare_fullscreen_tracing_mt = [] (const vec2 shape, const ivec2 ihalfsize, int thread_id) {
+	Batch prepare_fullscreen_tracing_mt(const vec2 shape, const ivec2 ihalfsize, int thread_id) {
 		Batch out;
 		out.trace_jobs.reserve(4 * ihalfsize.x * ihalfsize.y / thread_count);
 		out.job_infos.reserve(4 * ihalfsize.x * ihalfsize.y / thread_count);
@@ -1048,7 +1075,7 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
-	static auto handle_thing_pixel = [] (Batch *batch, vec4 *colors, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
+	void handle_thing_pixel(Batch *batch, vec4 *colors, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
 		static ball_distribution metal;
 		static sphere_distribution spherical;
 		const auto material = materials.at(t.thing);
@@ -1091,7 +1118,7 @@ void render(GLFWwindow *wnd) {
 		}
 	};
 
-	static auto handle_interreflections_1 = [] (vec4 *dest_colors, Batch in, const int n_samples) {
+	Batch handle_interreflections_1(vec4 *dest_colors, Batch in, const int n_samples) {
 		Batch out;
 		auto trace_result = trace(std::move(in.trace_jobs));
 		out.job_infos.reserve(in.job_infos.size());
@@ -1107,7 +1134,78 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
-	static auto trace_indexed_multipurpose = [] (vec4 *colors, vec4 *uvws, char *objects_mask, Batch in, const int n_samples) {
+	const RenderParams p;
+	std::vector<vec4> colors;
+};
+
+class RendererSimple : public Renderer {
+public:
+	using Renderer::Renderer;
+
+	void render() override {
+		parallel([&] (int th) {
+			auto jobs = prepare_fullscreen_tracing_mt(p.shape, p.ihalfsize, th);
+			for (int n_samples: {16, 2, 2, 1, 1})
+				jobs = handle_interreflections_1(colors.data(), std::move(jobs), n_samples);
+		});
+
+		show_texture(colors.data(), p.isize(), GL_NEAREST, [] (TextureID rt_colors) {
+			glBindTextureUnit(0, rt_colors);
+			glDisable(GL_BLEND);
+			glUseProgram(prog::quad);
+		});
+	}
+};
+
+class RendererRefining : public Renderer {
+public:
+	RendererRefining(vec2 shape) :
+		Renderer(shape)
+	{
+		uvws.resize(p.pixels());
+		objects_mask.resize(p.pixels());
+		fine_colors.resize(p.finepixels());
+	}
+
+	void render() override {
+		parallel([&] (int th) {
+			auto coarse_fullscreen_jobs = prepare_fullscreen_tracing_mt(p.shape, p.ihalfsize, th);
+			auto coarse_thingy_jobs = trace_indexed_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(coarse_fullscreen_jobs), 32);
+			for (int n_samples: {2, 2, 1, 1})
+				coarse_thingy_jobs = handle_interreflections_1(colors.data(), std::move(coarse_thingy_jobs), n_samples);
+		});
+
+		auto objects_mask_2 = spread_mask(p.ihalfsize, objects_mask.data());
+		parallel([&] (int th) {
+			auto fine_thingy_jobs = prepare_tracing_near_edges(p.ihalfsize, objects_mask_2.data(), th);
+			for (int n_samples: {4, 2, 1})
+				fine_thingy_jobs = handle_interreflections_1(fine_colors.data(), std::move(fine_thingy_jobs), n_samples);
+		});
+
+		show_texture(uvws.data(), p.isize(), GL_LINEAR, [] (TextureID rt_result) {
+			glBindTextureUnit(0, tex::objs);
+			glBindTextureUnit(1, rt_result);
+			glDisable(GL_BLEND);
+			glUseProgram(prog::uv_quad);
+		});
+
+		show_texture(colors.data(), p.isize(), GL_NEAREST, [] (TextureID rt_colors) {
+			glBindTextureUnit(0, rt_colors);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+			glUseProgram(prog::quad);
+		});
+
+		show_texture(fine_colors.data(), p.ifinesize, GL_NEAREST, [] (TextureID rt_fine_colors) {
+			glBindTextureUnit(0, rt_fine_colors);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+			glUseProgram(prog::quad);
+		});
+	}
+
+protected:
+	Batch trace_indexed_multipurpose(vec4 *colors, vec4 *uvws, char *objects_mask, Batch in, const int n_samples) {
 		Batch out;
 		auto trace_result = trace(std::move(in.trace_jobs));
 		for (int k = 0; k < trace_result.size(); k++) {
@@ -1125,7 +1223,7 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
-	static auto trace_flat_multipurpose = [] (vec4 *colors, vec4 *uvws, char *objects_mask, std::vector<TrackPoint> in_jobs, const int n_samples) {
+	Batch trace_flat_multipurpose(vec4 *colors, vec4 *uvws, char *objects_mask, std::vector<TrackPoint> in_jobs, const int n_samples) {
 		auto trace_result = trace(std::move(in_jobs));
 		Batch out;
 		for (int k = 0; k < trace_result.size(); k++) {
@@ -1142,7 +1240,7 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
-	static auto spread_mask = [] (const ivec2 ihalfsize, const char *objects_mask) {
+	std::vector<char> spread_mask(const ivec2 ihalfsize, const char *objects_mask) {
 		std::vector<char> objects_mask_2;
 		objects_mask_2.resize(4 * ihalfsize.x * ihalfsize.y);
 		for (ivec2 ipos: irange(-ihalfsize + 1, ihalfsize - 1)) {
@@ -1156,7 +1254,7 @@ void render(GLFWwindow *wnd) {
 		return objects_mask_2;
 	};
 
-	auto prepare_tracing_near_edges = [&] (const ivec2 ihalfsize, const char *objects_mask_2, int thread_id) {
+	Batch prepare_tracing_near_edges(const ivec2 ihalfsize, const char *objects_mask_2, int thread_id) {
 		const ivec2 fine_size = 2 * settings::refine * ihalfsize;
 		Batch out;
 		for (ivec2 ipos: irange(-ihalfsize + ivec2{0, thread_id}, ihalfsize, {1, thread_count})) {
@@ -1170,7 +1268,7 @@ void render(GLFWwindow *wnd) {
 				const int fine_index = fine_size.x * fine_ipos.y + fine_ipos.x;
 				const vec2 off = (vec2(sub) + .5f) / float(settings::refine);
 				const vec2 wpos = (vec2(ipos) + off) / vec2(ihalfsize);
-				const vec2 spos = shape * wpos;
+				const vec2 spos = p.shape * wpos;
 				TrackPoint pt;
 				pt.pos = me->loc.pos;
 				pt.dir = me->loc.rot * normalize(vec3(spos.x, 1.0f, spos.y));
@@ -1183,89 +1281,33 @@ void render(GLFWwindow *wnd) {
 		return out;
 	};
 
-	static auto parallel = [] (auto fn) {
-		std::thread ths[thread_count];
-		for (int th = 0; th < thread_count; th++)
-			ths[th] = std::thread([&, th] () {
-				glfwMakeContextCurrent(background_contexts[th]);
-				fn(th);
-				glfwMakeContextCurrent(nullptr);
-			});
-		for (int th = 0; th < thread_count; th++)
-			ths[th].join();
-	};
+	std::vector<vec4> uvws;
+	std::vector<char> objects_mask;
+	std::vector<vec4> fine_colors;
+};
 
-	if (settings::refine > 1) {
-		parallel([&] (int th) {
-			auto coarse_fullscreen_jobs = prepare_fullscreen_tracing_mt(shape, ihalfsize, th);
-			auto coarse_thingy_jobs = trace_indexed_multipurpose(colors.data(), uvws.data(), objects_mask.data(), std::move(coarse_fullscreen_jobs), 32);
-			for (int n_samples: {2, 2, 1, 1})
-				coarse_thingy_jobs = handle_interreflections_1(colors.data(), std::move(coarse_thingy_jobs), n_samples);
-		});
-
-		auto objects_mask_2 = spread_mask(ihalfsize, objects_mask.data());
-		parallel([&] (int th) {
-			auto fine_thingy_jobs = prepare_tracing_near_edges(ihalfsize, objects_mask_2.data(), th);
-			for (int n_samples: {4, 2, 1})
-				fine_thingy_jobs = handle_interreflections_1(fine_colors.data(), std::move(fine_thingy_jobs), n_samples);
-		});
-	} else {
-		parallel([&] (int th) {
-			auto jobs = prepare_fullscreen_tracing_mt(shape, ihalfsize, th);
-			for (int n_samples: {16, 2, 2, 1, 1})
-				jobs = handle_interreflections_1(colors.data(), std::move(jobs), n_samples);
-		});
+void render(GLFWwindow *wnd) {
+	{
+		struct {
+			Params params;
+			Coefs cs;
+		} data{
+			uni.params,
+			uni.params,
+		};
+		uni.side.prog = comp::side;
+		uni.side.params.resize(sizeof(data));
+		std::memcpy(uni.side.params.data(), &data, sizeof(data));
 	}
 
-	double rtt2 = glfwGetTime();
-	rt_rays += uvws.size();
-	rt_time += rtt2 - rtt1;
-
-	if (settings::refine > 1) {
-		TextureID rt_result = 0;
-		glCreateTextures(GL_TEXTURE_2D, 1, &rt_result);
-		glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(rt_result,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(rt_result,  GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTextureStorage2D(rt_result, 1, GL_RGBA16F, 2 * ihalfsize.x, 2 * ihalfsize.y);
-		glTextureSubImage2D(rt_result, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, uvws.data());
-		glUseProgram(prog::uv_quad);
-		glBindTextureUnit(0, tex::objs);
-		glBindTextureUnit(1, rt_result);
-		glDisable(GL_BLEND);
-		glDrawArrays(GL_POINTS, 0, 1);
-		glDeleteTextures(1, &rt_result);
-	}
-
-	TextureID rt_colors = 0;
-	glCreateTextures(GL_TEXTURE_2D, 1, &rt_colors);
-	glTextureParameteri(rt_colors,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTextureParameteri(rt_colors,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTextureParameteri(rt_colors,  GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTextureStorage2D(rt_colors, 1, GL_RGBA8, 2 * ihalfsize.x, 2 * ihalfsize.y);
-	glTextureSubImage2D(rt_colors, 0, 0, 0, 2 * ihalfsize.x, 2 * ihalfsize.y, GL_RGBA, GL_FLOAT, colors.data());
-	glBindTextureUnit(0, rt_colors);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-	glUseProgram(prog::quad);
-	glDrawArrays(GL_POINTS, 0, 1);
-	glDeleteTextures(1, &rt_colors);
-
-	if (settings::refine > 1) {
-		TextureID rt_fine_colors = 0;
-		glCreateTextures(GL_TEXTURE_2D, 1, &rt_fine_colors);
-		glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(rt_fine_colors,  GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(rt_fine_colors,  GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTextureStorage2D(rt_fine_colors, 1, GL_RGBA8, fine_size.x, fine_size.y);
-		glTextureSubImage2D(rt_fine_colors, 0, 0, 0, fine_size.x, fine_size.y, GL_RGBA, GL_FLOAT, fine_colors.data());
-		glBindTextureUnit(0, rt_fine_colors);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-		glUseProgram(prog::quad);
-		glDrawArrays(GL_POINTS, 0, 1);
-		glDeleteTextures(1, &rt_fine_colors);
-	}
+	const vec2 shape = getWinShape(wnd);
+	std::unique_ptr<Renderer> rnd;
+	if (settings::refine > 1)
+		rnd.reset(new RendererRefining(shape));
+	else
+		rnd.reset(new RendererSimple(shape));
+	rnd->render();
+	rnd.reset();
 
 	glUseProgram(0);
 
