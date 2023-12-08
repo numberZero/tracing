@@ -870,33 +870,25 @@ struct VisualTraceResult {
 };
 
 std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
-	struct Job {
-		int at;
-		TrackPoint pt;
-	};
 	std::vector<VisualTraceResult> result(rays.size());
-	std::vector<Job> jobs(rays.size());
-	for (int k = 0; k < rays.size(); k++)
-		jobs[k] = {k, rays[k]};
-	for (int n = 0; !jobs.empty(); n++) {
+	struct Batch {
+		std::vector<int> indices;
+		std::vector<Ray> rays;
+	};
+	std::unordered_map<Subspace const *, Batch> batches;
+	for (auto &&[at, pt]: enumerate(rays)) {
+		Batch &batch = batches[pt.space];
+		batch.indices.push_back(at);
+		batch.rays.push_back(pt);
+	}
+
+	for (int n = 0; !batches.empty(); n++) {
 		if (n >= settings::trace_limit) {
-			fprintf(stderr, "Warning: tracing loop aborted with %zu jobs still pending\n", jobs.size());
+			fprintf(stderr, "Warning: tracing loop aborted with %zu batches still pending\n", batches.size());
 			break;
 		}
 
-		struct Batch {
-			std::vector<int> indices;
-			std::vector<Ray> rays;
-		};
-		std::unordered_map<Subspace const *, Batch> batches;
-
-		for (auto &&job: jobs) {
-			Batch &batch = batches[job.pt.space];
-			batch.indices.push_back(job.at);
-			batch.rays.push_back(job.pt);
-		}
-		jobs.clear();
-
+		std::unordered_map<Subspace const *, Batch> new_batches;
 		for (auto &&[space, batch]: batches) {
 			assert(batch.indices.size() == batch.rays.size());
 			auto results = space->trace(batch.rays);
@@ -917,7 +909,9 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 					}
 				}
 				if (traced.to.space) {
-					jobs.push_back({at, traced.to});
+					Batch &batch = new_batches[traced.to.space];
+					batch.indices.push_back(at);
+					batch.rays.push_back(traced.to);
 				} else {
 					result[at] = {
 						.incident = traced.end,
@@ -927,6 +921,7 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 				}
 			}
 		}
+		batches = std::move(new_batches);
 	}
 	return result;
 }
