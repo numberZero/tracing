@@ -1085,34 +1085,43 @@ protected:
 			colors[pixel_index] += vec4(color * emission, 0.0f);
 		if (material->color == vec3{})
 			return;
-		for (int s = 0; s < n_samples; s++) {
-			vec3 dir;
-			if (material->roughness == -1.0f) {
-				if (const auto light_loc = spheres[0].loc; light_loc.space == t.space) {
-					// bias towards the light
-					constexpr float h = 0.1f;
-					const float threshold = -std::sqrt(1.0f - sqr(1.0f - h));
-					static std::uniform_real_distribution<float> along{1.0f - h, 1.0f};
-					if (const vec3 light_dir = normalize(light_loc.pos - t.incident.pos); dot(light_dir, t.normal) >= threshold) {
-						const float x = along(gen);
-						const float r = std::sqrt(1 - x * x);
-						const vec3 v = spherical(gen);
-						dir = x * light_dir + r * normalize(v - light_dir * dot(v, light_dir));
-						if (dot(dir, t.normal) > 0.0f) {
-							// The weight is the ratio of the original probability density to the
-							// biased one. It is simply h for this specific pair.
+		if (material->roughness == -1.0f) {
+			if (const auto light_loc = spheres[0].loc; light_loc.space == t.space) {
+				// bias towards the light
+				constexpr float h = 0.1f;
+				const float threshold = -std::sqrt(1.0f - sqr(1.0f - h));
+				static std::uniform_real_distribution<float> to_light{1.0f - h, 1.0f};
+				static std::uniform_real_distribution<float> against_light{-1.0f, 1.0f - h};
+				if (const vec3 light_dir = normalize(light_loc.pos - t.incident.pos); dot(light_dir, t.normal) >= threshold) {
+					for (int s = 0; s < n_samples; s++) {
+						vec3 dir = spherical(gen);
+						if (s % 4) {
+							const float x = to_light(gen);
+							const float r = std::sqrt(1 - x * x);
+							const vec3 v = spherical(gen);
+							dir = x * light_dir + r * normalize(v - light_dir * dot(v, light_dir));
+							if (dot(dir, t.normal) < 0.0f)
+								continue;
 							batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
-							batch->job_infos.push_back({pixel_index, h * color * material->color * (weight / float(n_samples))});
-							continue;
+							batch->job_infos.push_back({pixel_index, h * color * material->color * (weight / (.75f * n_samples))});
+						} else {
+							const float x = against_light(gen);
+							const float r = std::sqrt(1 - x * x);
+							const vec3 v = spherical(gen);
+							dir = x * light_dir + r * normalize(v - light_dir * dot(v, light_dir));
+							if (dot(dir, t.normal) < 0.0f)
+								continue;
+							batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
+							batch->job_infos.push_back({pixel_index, (2.0f - h) * color * material->color * (weight / (.25f * n_samples))});
 						}
 					}
+					return;
 				}
-				dir = spherical(gen);
-				if (dot(dir, t.normal) < 0.0f)
-					dir -= 2.0f * t.normal * dot(dir, t.normal);
-			} else {
-				dir = normalize(reflect(t.incident.dir, t.normal) + material->roughness * metal(gen));
 			}
+		}
+		for (int s = 0; s < n_samples; s++) {
+			vec3 dir;
+			dir = normalize(reflect(t.incident.dir, t.normal) + material->roughness * metal(gen));
 			batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
 			batch->job_infos.push_back({pixel_index, color * material->color * (weight / float(n_samples))});
 		}
