@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <memory>
 #include <limits>
-#include <random>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -25,6 +24,7 @@
 #include "prog5/universe.hxx"
 #include "prog5/visual.hxx"
 #include "iters.hxx"
+#include "rand.hxx"
 
 #define TEST 0
 // #define debugf(...) printf(__VA_ARGS__)
@@ -857,48 +857,6 @@ void load_textures() {
 	glTextureParameteri(tex::objs, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
-class ball_distribution {
-public:
-	ball_distribution(float _radius = 1.0f) : radius(_radius), inner(-1.0f, 1.0f) {}
-
-	template <typename Generator>
-	glm::vec3 operator()(Generator &gen) {
-		for (;;) {
-			glm::vec3 v{inner(gen), inner(gen), inner(gen)};
-			float len = glm::length(v);
-			if (len <= 1.0f) {
-				return radius * v;
-			}
-		}
-	}
-
-	float radius;
-
-private:
-	std::uniform_real_distribution<float> inner;
-};
-
-class sphere_distribution {
-public:
-	sphere_distribution(float _radius = 1.0f) : radius(_radius), inner(-1.0f, 1.0f) {}
-
-	template <typename Generator>
-	glm::vec3 operator()(Generator &gen) {
-		for (;;) {
-			glm::vec3 v{inner(gen), inner(gen), inner(gen)};
-			float len = glm::length(v);
-			if (len <= 1.0f && len >= 1e-3) {
-				return (radius / len) * v;
-			}
-		}
-	}
-
-	float radius;
-
-private:
-	std::uniform_real_distribution<float> inner;
-};
-
 glm::vec3 sample(glm::vec3 dir) {
 	return skybox.sample(dir);
 }
@@ -1000,7 +958,9 @@ static void parallel(auto fn) {
 		ths[th].join();
 };
 
-static thread_local pcg32 gen{(unsigned long)glfwGetTimerValue()};
+std::uint64_t rseeder() {
+	return glfwGetTimerValue();
+}
 
 struct RenderParams {
 	vec2 shape;
@@ -1076,8 +1036,6 @@ protected:
 	};
 
 	void handle_thing_pixel(Batch *batch, vec4 *colors, int const pixel_index, VisualTraceResult const& t, vec3 const weight, int const n_samples) {
-		static ball_distribution metal;
-		static sphere_distribution spherical;
 		const auto material = materials.at(t.thing);
 		vec3 color = material->texture ? material->texture->sample(t.normal) : vec3(1.0f);
 		vec3 emission = weight * material->emission;
@@ -1090,8 +1048,6 @@ protected:
 				// bias towards the light
 				constexpr float h = 0.1f;
 				const float threshold = -std::sqrt(1.0f - sqr(1.0f - h));
-				static std::uniform_real_distribution<float> to_light{1.0f - h, 1.0f};
-				static std::uniform_real_distribution<float> against_light{-1.0f, 1.0f - h};
 				if (const vec3 light_dir = normalize(light_loc.pos - t.incident.pos); dot(light_dir, t.normal) >= threshold) {
 					for (int s = 0; s < n_samples; s++) {
 						// The weight is the ratio of the original probability density to the biased one. Scaled by 2 as we discard half of the rays.
@@ -1099,9 +1055,9 @@ protected:
 						constexpr float antibiased_weight = (2.0f - h) / 0.25f;
 						const bool do_bias = s % 4;
 						const float w = do_bias ? biased_weight : antibiased_weight;
-						const float x = do_bias ? to_light(gen) : against_light(gen);
+						const float x = do_bias ? 1.0f - h * rand_canonical() : (2.0f - h) * rand_canonical() - 1.0f;
 						const float r = std::sqrt(1 - x * x);
-						const vec3 v = spherical(gen);
+						const vec3 v = rand_spherical();
 						const vec3 dir = x * light_dir + r * normalize(v - light_dir * dot(v, light_dir));
 						if (dot(dir, t.normal) < 0.0f)
 							continue;
@@ -1114,7 +1070,7 @@ protected:
 		}
 		for (int s = 0; s < n_samples; s++) {
 			vec3 dir;
-			dir = normalize(reflect(t.incident.dir, t.normal) + material->roughness * metal(gen));
+			dir = normalize(reflect(t.incident.dir, t.normal) + material->roughness * rand_ball());
 			batch->trace_jobs.push_back({{t.incident.pos, dir}, t.space});
 			batch->job_infos.push_back({pixel_index, color * material->color * (weight / float(n_samples))});
 		}
