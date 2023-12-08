@@ -1,5 +1,6 @@
 #pragma once
 #include <limits>
+#include <span>
 #include <vector>
 #include "math.hxx"
 #include "desc/riemann.hxx"
@@ -46,7 +47,7 @@ class Subspace {
 public:
 	virtual TraceResult trace(Ray from) const = 0;
 
-	virtual std::vector<TraceResult> trace(std::vector<Ray> from) const {
+	virtual std::vector<TraceResult> trace(std::span<Ray> from) const {
 		int nrays = from.size();
 		std::vector<TraceResult> result;
 		result.resize(nrays);
@@ -103,6 +104,8 @@ public:
 		matd g = metric->metric(pos);
 		return sqrt(dot(vec, g * vec));
 	}
+
+	using Subspace::trace;
 
 	TraceResult trace(Ray from) const override {
 		float t = 0.0f;

@@ -19,7 +19,7 @@ public:
 		vec4 dir_pad;
 	};
 
-	std::vector<TraceResult> trace(std::vector<Ray> from) const override {
+	std::vector<TraceResult> trace(std::span<Ray> from) const override {
 		GLuint idx = glGetProgramResourceIndex(prog, GL_UNIFORM_BLOCK, "ParamsBlock");
 		if (idx == -1)
 			throw "Bad program";
@@ -33,17 +33,18 @@ public:
 		std::memcpy(dParams.data(), params.data(), params.size());
 
 		int nrays = from.size();
-		int ngroups = (nrays + workgroup_size - 1) / workgroup_size;
-		from.resize(workgroup_size * ngroups);
-		for (int k = nrays; k < from.size(); k++)
-			from[k] = from[0]; // pad the array
+		int ngroups = nrays / workgroup_size;
+		if (ngroups < 2)
+			return RiemannSubspace::trace(from);
+
+		auto batch = from.subspan(workgroup_size * ngroups);
 		BufferID bufs[3];
 		glCreateBuffers(3, bufs);
 		BufferID bIn = bufs[0];
 		BufferID bOut = bufs[1];
 		BufferID bParams = bufs[2];
-		glNamedBufferStorage(bIn, sizeof(from[0]) * from.size(), from.data(), 0);
-		glNamedBufferStorage(bOut, sizeof(OutRay) * from.size(), nullptr, GL_MAP_READ_BIT);
+		glNamedBufferStorage(bIn, sizeof(batch[0]) * batch.size(), batch.data(), 0);
+		glNamedBufferStorage(bOut, sizeof(OutRay) * batch.size(), nullptr, GL_MAP_READ_BIT);
 		glNamedBufferStorage(bParams, dParams.size(), dParams.data(), 0);
 
 		glUseProgram(prog);
@@ -62,7 +63,7 @@ public:
 
 		std::vector<TraceResult> result;
 		result.resize(nrays);
-		for (int k = 0; k < nrays; k++) {
+		for (int k = 0; k < batch.size(); k++) {
 			OutRay ray = to[k];
 			Ray end;
 			end.pos = vec3(ray.pos_dist);
@@ -73,6 +74,12 @@ public:
 
 		glUnmapNamedBuffer(bOut);
 		glDeleteBuffers(3, bufs);
+
+		// handle the tail on the CPU
+		for (int k = batch.size(); k < from.size(); k++) {
+			result[k] = trace(from[k]);
+		}
+
 		return result;
 	}
 };

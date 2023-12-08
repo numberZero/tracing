@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <memory>
 #include <limits>
+#include <span>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -910,7 +911,7 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 			auto results = space->trace(batch.rays);
 			auto flat = dynamic_cast<ThingySubspace const *>(space);
 			assert(results.size() == batch.rays.size());
-			for (int k = 0; k < batch.rays.size(); k++) {
+			for (int k = 0; k < batch.size; k++) {
 				const int at = batch.indices[k];
 				auto const &traced = results[k];
 				if (flat) {
