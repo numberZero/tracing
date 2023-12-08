@@ -887,18 +887,9 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 		struct Batch {
 			std::vector<int> indices;
 			std::vector<Ray> rays;
-			int size = 0;
 		};
 		std::unordered_map<Subspace const *, Batch> batches;
 
-		for (auto &&job: jobs) {
-			Batch &batch = batches[job.pt.space];
-			batch.size++;
-		}
-		for (auto &&[key, batch]: batches) {
-			batch.indices.reserve(batch.size);
-			batch.rays.reserve(batch.size);
-		}
 		for (auto &&job: jobs) {
 			Batch &batch = batches[job.pt.space];
 			batch.indices.push_back(job.at);
@@ -911,7 +902,7 @@ std::vector<VisualTraceResult> trace(std::vector<TrackPoint> rays) {
 			auto results = space->trace(batch.rays);
 			auto flat = dynamic_cast<ThingySubspace const *>(space);
 			assert(results.size() == batch.rays.size());
-			for (int k = 0; k < batch.size; k++) {
+			for (int k = 0; k < batch.rays.size(); k++) {
 				const int at = batch.indices[k];
 				auto const &traced = results[k];
 				if (flat) {
